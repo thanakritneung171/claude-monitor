@@ -1,6 +1,10 @@
 """
 Claude Monitor — mitmproxy addon
-Intercepts POST api.anthropic.com/v1/messages and logs to Cloudflare Worker.
+Intercepts Claude API calls and logs to Cloudflare Worker + local JSONL.
+
+Targets:
+  - api.anthropic.com/v1/messages  (API key / Claude Code)
+  - claude.ai  (Claude Desktop app — discovery + logging)
 
 Usage:
     mitmdump -s addon.py --listen-port 8080
@@ -206,4 +210,58 @@ class ClaudeMonitor:
               f"${log['cost_usd']:.5f} | logged to {_log_path().name}")
 
 
-addons = [ClaudeMonitor()]
+class ClaudeDesktopDiscovery:
+    """
+    Discovery mode for Claude.ai Desktop app.
+    Logs every POST to claude.ai so we can find the right completion endpoint.
+    Discovery file: log/claude_desktop_discovery.jsonl
+    """
+    DISCOVERY_FILE = LOG_DIR / "claude_desktop_discovery.jsonl"
+    SKIP_PATHS = {"/api/auth/", "/api/analytics", "/static/", "/favicon"}
+
+    def response(self, flow: http.HTTPFlow):
+        host = flow.request.host
+        if "claude.ai" not in host:
+            return
+        if flow.request.method != "POST":
+            return
+
+        path = flow.request.path
+        if any(path.startswith(s) for s in self.SKIP_PATHS):
+            return
+
+        ct       = flow.response.headers.get("content-type", "")
+        status   = flow.response.status_code
+        req_size = len(flow.request.content)
+        res_size = len(flow.response.content)
+
+        entry = {
+            "ts":     int(datetime.now().timestamp() * 1000),
+            "host":   host,
+            "path":   path,
+            "status": status,
+            "req_ct": flow.request.headers.get("content-type", ""),
+            "res_ct": ct,
+            "req_bytes": req_size,
+            "res_bytes": res_size,
+            "is_sse": "event-stream" in ct,
+        }
+
+        # Try to parse request body for preview
+        try:
+            entry["req_preview"] = json.loads(flow.request.content)
+        except Exception:
+            entry["req_preview"] = flow.request.content[:200].decode("utf-8", errors="replace")
+
+        # Write to discovery log
+        try:
+            with open(self.DISCOVERY_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+        sse_mark = " [SSE]" if entry["is_sse"] else ""
+        print(f"[claude-desktop]{sse_mark} {status} POST {path} | req={req_size}b res={res_size}b")
+
+
+addons = [ClaudeMonitor(), ClaudeDesktopDiscovery()]
