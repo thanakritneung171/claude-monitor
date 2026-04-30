@@ -1,0 +1,16 @@
+{
+	"name": "claude-monitor-hooks",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-01",
+	"account_id": "d5863d4cf5f59f9277f2596f268fd037",
+	"observability": {
+		"enabled": true
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "prompt-logger",
+			"database_id": "e2621e12-df8f-49ac-9514-b1c14cf0c3c5"
+		}
+	]
+}
