@@ -7,8 +7,9 @@
 		"dev":      "wrangler dev",
 		"start":    "wrangler dev",
 		"cf-typegen": "wrangler types",
-		"db:init":  "wrangler d1 execute prompt-logger --remote --file=schema.sql",
-		"db:local": "wrangler d1 execute prompt-logger --local  --file=schema.sql"
+		"db:init":    "wrangler d1 execute prompt-logger --remote --file=schema.sql",
+		"db:local":   "wrangler d1 execute prompt-logger --local  --file=schema.sql",
+		"db:migrate": "wrangler d1 execute prompt-logger --remote --file=migrations/0001_add_account_email.sql"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.0.0",

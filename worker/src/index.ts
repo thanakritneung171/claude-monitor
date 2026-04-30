@@ -9,6 +9,7 @@ interface ApiLog {
 	id: string;
 	ts: number;
 	client: string;
+	account_email: string;
 	machine_name: string;
 	model: string;
 	prompt: string;
@@ -76,7 +77,8 @@ function buildDashboard(rows: ApiLog[], totals: {
 	totalCacheRead: number; totalCacheCreate: number; totalCost: number;
 }, byModel: { model: string; n: number; tokens: number; cost: number }[],
    byClient: { client: string; n: number }[],
-   byMachine: { machine_name: string; n: number }[]
+   byMachine: { machine_name: string; n: number }[],
+   byAccount: { account_email: string; n: number; cost: number }[]
 ): string {
 
 	const kpis = [
@@ -100,10 +102,15 @@ function buildDashboard(rows: ApiLog[], totals: {
 		`<tr><td><code style="font-size:12px">${esc(m.machine_name || '—')}</code></td><td class="r">${num(m.n)}</td></tr>`
 	).join('');
 
+	const accountRows = byAccount.map(a =>
+		`<tr><td><code style="font-size:12px">${esc(a.account_email || '—')}</code></td><td class="r">${num(a.n)}</td><td class="r cost">$${num(a.cost, 4)}</td></tr>`
+	).join('');
+
 	const logRows = rows.map(r =>
 		`<tr>
 			<td class="ts">${fmtBkk(r.ts)}</td>
 			<td>${clientBadge(r.client)}</td>
+			<td><code style="font-size:11px">${esc(r.account_email || '—')}</code></td>
 			<td><code style="font-size:11px">${esc(r.machine_name || '—')}</code></td>
 			<td>${modelBadge(r.model)}</td>
 			<td class="pmx">${preview(r.prompt)}</td>
@@ -137,6 +144,8 @@ main{padding:20px 24px;max-width:1700px;margin:0 auto}
 .card .l{font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:#484f58;font-weight:700;margin-bottom:5px}
 .card .v{font-size:24px;font-weight:700;color:#f0f6fc;line-height:1}
 .three{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:20px}
+.four{display:grid;grid-template-columns:1.6fr 1.4fr 1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:1100px){.four{grid-template-columns:1fr 1fr}}
 section{margin-bottom:20px}
 section h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58;margin-bottom:8px}
 table{width:100%;border-collapse:collapse;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
@@ -172,12 +181,19 @@ tr:hover td{background:#1c2128}
 <div class="grid">
 ${kpis.map(k => `<div class="card"><div class="l">${k.l}</div><div class="v">${k.v}</div></div>`).join('\n')}
 </div>
-<div class="three">
+<div class="four">
   <section>
     <h2>By Model</h2>
     <table>
       <thead><tr><th>Model</th><th class="r">Calls</th><th class="r">Tokens</th><th class="r">Cost</th></tr></thead>
       <tbody>${modelRows || '<tr><td colspan="4" style="color:#484f58;padding:14px">No data yet</td></tr>'}</tbody>
+    </table>
+  </section>
+  <section>
+    <h2>By Account</h2>
+    <table>
+      <thead><tr><th>Email</th><th class="r">Calls</th><th class="r">Cost</th></tr></thead>
+      <tbody>${accountRows || '<tr><td colspan="3" style="color:#484f58;padding:14px">—</td></tr>'}</tbody>
     </table>
   </section>
   <section>
@@ -201,13 +217,13 @@ ${kpis.map(k => `<div class="card"><div class="l">${k.l}</div><div class="v">${k
     <table>
       <thead>
         <tr>
-          <th>Time (BKK)</th><th>Client</th><th>Machine</th><th>Model</th><th>Prompt</th>
+          <th>Time (BKK)</th><th>Client</th><th>Account</th><th>Machine</th><th>Model</th><th>Prompt</th>
           <th class="r">In</th><th class="r">Out</th>
           <th class="r">Cache↑</th><th class="r">Cache↓</th>
           <th class="r">Total</th><th class="r">Cost</th>
         </tr>
       </thead>
-      <tbody>${logRows || '<tr><td colspan="11" style="color:#484f58;padding:16px">No calls yet — start mitmproxy and use Claude</td></tr>'}</tbody>
+      <tbody>${logRows || '<tr><td colspan="12" style="color:#484f58;padding:16px">No calls yet — start mitmproxy and use Claude</td></tr>'}</tbody>
     </table>
   </div>
 </section>
@@ -245,14 +261,15 @@ export default {
 				const b = await request.json() as Partial<ApiLog>;
 				await env.DB.prepare(
 					`INSERT OR IGNORE INTO api_logs
-					   (id, ts, client, machine_name, model, prompt, prompt_chars, response_chars,
+					   (id, ts, client, account_email, machine_name, model, prompt, prompt_chars, response_chars,
 					    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 					    total_tokens, cost_usd)
-					 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+					 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 				).bind(
 					b.id ?? crypto.randomUUID(),
 					b.ts ?? Date.now(),
 					b.client        ?? 'unknown',
+					b.account_email ?? '',
 					b.machine_name  ?? '',
 					b.model         ?? '',
 					b.prompt        ?? '',
@@ -276,7 +293,7 @@ export default {
 
 		// GET / — Dashboard
 		if (pathname === '/' && request.method === 'GET') {
-			const [rows, totals, byModel, byClient, byMachine] = await Promise.all([
+			const [rows, totals, byModel, byClient, byMachine, byAccount] = await Promise.all([
 				env.DB.prepare(`SELECT * FROM api_logs ORDER BY ts DESC LIMIT 100`).all<ApiLog>(),
 				env.DB.prepare(
 					`SELECT COUNT(*) as total, SUM(input_tokens) as totalInput, SUM(output_tokens) as totalOutput,
@@ -294,13 +311,17 @@ export default {
 				env.DB.prepare(
 					`SELECT machine_name, COUNT(*) as n FROM api_logs GROUP BY machine_name ORDER BY n DESC`
 				).all<{ machine_name: string; n: number }>(),
+				env.DB.prepare(
+					`SELECT account_email, COUNT(*) as n, SUM(cost_usd) as cost
+					 FROM api_logs GROUP BY account_email ORDER BY n DESC`
+				).all<{ account_email: string; n: number; cost: number }>(),
 			]);
 
 			const html = buildDashboard(
 				rows.results,
 				{ total: totals?.total ?? 0, totalInput: totals?.totalInput ?? 0, totalOutput: totals?.totalOutput ?? 0,
 				  totalCacheRead: totals?.totalCacheRead ?? 0, totalCacheCreate: totals?.totalCacheCreate ?? 0, totalCost: totals?.totalCost ?? 0 },
-				byModel.results, byClient.results, byMachine.results,
+				byModel.results, byClient.results, byMachine.results, byAccount.results,
 			);
 			return new Response(html, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
 		}

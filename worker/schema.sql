@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS api_logs (
   id                    TEXT    PRIMARY KEY,
   ts                    INTEGER NOT NULL,
   client                TEXT    NOT NULL DEFAULT 'unknown',
+  account_email         TEXT    NOT NULL DEFAULT '',
   machine_name          TEXT    NOT NULL DEFAULT '',
   model                 TEXT    NOT NULL DEFAULT '',
   prompt                TEXT    NOT NULL DEFAULT '',
@@ -19,3 +20,4 @@ CREATE INDEX IF NOT EXISTS idx_api_logs_ts      ON api_logs(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_api_logs_model   ON api_logs(model);
 CREATE INDEX IF NOT EXISTS idx_api_logs_client  ON api_logs(client);
 CREATE INDEX IF NOT EXISTS idx_api_logs_machine ON api_logs(machine_name);
+CREATE INDEX IF NOT EXISTS idx_api_logs_email   ON api_logs(account_email);
