@@ -169,3 +169,6 @@ dist
 proxy/config.py
 __pycache__/
 *.pyc
+
+# local logs
+log/

@@ -7,11 +7,13 @@ Usage:
 """
 
 import json
+import os
 import socket
 import threading
 import urllib.request
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from mitmproxy import http
 
@@ -24,6 +26,25 @@ except ImportError:
     raise SystemExit("config.py not found — copy config.example.py → config.py and fill in values.")
 
 HOSTNAME = socket.gethostname()
+
+# ── Local log directory (../log relative to this file) ───────────────────────
+LOG_DIR  = Path(__file__).parent.parent / "log"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "claude.jsonl"   # rotate ทุกวันโดย date suffix
+
+def _log_path() -> Path:
+    """Returns log file path for today: log/claude_YYYY-MM-DD.jsonl"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    return LOG_DIR / f"claude_{today}.jsonl"
+
+def _write_local(payload: dict):
+    """Append one JSON line to today's log file (thread-safe)."""
+    try:
+        line = json.dumps(payload, ensure_ascii=False) + "\n"
+        with open(_log_path(), "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
 
 # ── Pricing (USD / 1M tokens) ─────────────────────────────────────────────────
 _PRICE = {
@@ -174,10 +195,15 @@ class ClaudeMonitor:
             "cost_usd":              _calc_cost(model, inp, out, cr, cw),
         }
 
+        # ── Write local log (sync, fast) ─────────────────────────────────
+        _write_local(log)
+
+        # ── Send to Cloudflare Worker (async) ─────────────────────────────
         threading.Thread(target=_send_log, args=(log,), daemon=True).start()
+
         print(f"[claude-monitor] {client} | {model} | "
               f"in={inp:,} out={out:,} cr={cr:,} cw={cw:,} | "
-              f"${log['cost_usd']:.5f}")
+              f"${log['cost_usd']:.5f} | logged to {_log_path().name}")
 
 
 addons = [ClaudeMonitor()]
