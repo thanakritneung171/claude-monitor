@@ -34,10 +34,10 @@ Write-Host "  First time? Run install-cert.ps1 as Administrator" -ForegroundColo
 Write-Host ""
 
 # Run mitmproxy — MITM only Claude-related hosts, pass everything else through
-#   claude.ai                       → Claude.ai Desktop app
-#   api.anthropic.com               → API key users (Claude Code, VSCode, SDKs)
-#   bridge.claudeusercontent.com    → Claude Code account-login (WebSocket)
-$allowHosts = "(claude\.ai|api\.anthropic\.com|bridge\.claudeusercontent\.com)"
+#   *.anthropic.com         → API + Cowork backend (e.g. dust.anthropic.com)
+#   *.claude.ai             → Desktop app + Cowork web (subdomains incl. cowork.claude.ai)
+#   *.claudeusercontent.com → Bridge WebSocket (Claude Code OAuth + Cowork chrome agent)
+$allowHosts = "(anthropic\.com|claude\.ai|claudeusercontent\.com)"
 
 Set-Location $here
 mitmdump -s addon.py --listen-port $port -q --allow-hosts $allowHosts

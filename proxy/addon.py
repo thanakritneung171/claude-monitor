@@ -77,17 +77,46 @@ def _calc_cost(model: str, inp: int, out: int, cr: int, cw: int) -> float:
     return (inp * p["inp"] + out * p["out"] + cr * p["cr"] + cw * p["cw"]) / 1_000_000
 
 
+# ── Cowork heuristic: tools/metadata reveal it even when UA is generic ───────
+def _looks_like_cowork(req: dict, headers) -> bool:
+    """
+    True if request body has cowork-specific MCP tools (mcp__cowork__*)
+    or the metadata block names a cowork surface.
+    """
+    try:
+        for tool in req.get("tools") or []:
+            name = (tool.get("name") if isinstance(tool, dict) else "") or ""
+            if name.startswith("mcp__cowork"):
+                return True
+        meta = req.get("metadata") or {}
+        if isinstance(meta, dict):
+            for v in meta.values():
+                if isinstance(v, str) and "cowork" in v.lower():
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 # ── Client detection ──────────────────────────────────────────────────────────
 def _detect_client(headers) -> str:
     ua   = str(headers.get("user-agent",            "")).lower()
     name = str(headers.get("anthropic-client-name", "")).lower()
     app  = str(headers.get("x-app",                 "")).lower()
+    ctx  = str(headers.get("x-client-context",      "")).lower()
+
     if "claude-code" in name or "claude-code" in ua or "claude-code" in app:
-        return "claude-code"
-    if "vscode" in ua or "vscode" in name:
-        return "vscode"
+        # VSCode extension injects x-client-context: vscode, or shows electron/vscode in UA
+        if "vscode" in ctx or "vscode" in ua or "visual-studio-code" in ua:
+            return "claude-code-vscode"
+        return "claude-code-cli"
+
+    if "vscode" in ua or "vscode" in name or "vscode" in ctx:
+        return "claude-code-vscode"
+
     if "electron" in ua or "claude" in ua or "anthropic" in ua:
         return "claude-desktop"
+
     return "api"
 
 
@@ -177,6 +206,11 @@ def _parse_sse_desktop(text: str) -> dict:
 
 # ── Extract last user prompt from api.anthropic.com messages ─────────────────
 def _extract_prompt_api(messages: list) -> str:
+    """
+    Returns the user's actual typed prompt. Cowork injects <system-reminder>
+    blocks (tool listings, context) ahead of the real input — those are
+    skipped in favor of the last non-reminder text block.
+    """
     for m in reversed(messages):
         if m.get("role") != "user":
             continue
@@ -184,9 +218,14 @@ def _extract_prompt_api(messages: list) -> str:
         if isinstance(content, str):
             return content
         if isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    return block.get("text", "")
+            texts = [b.get("text", "") for b in content
+                     if isinstance(b, dict) and b.get("type") == "text" and b.get("text")]
+            if not texts:
+                continue
+            user_texts = [t for t in texts if not t.lstrip().startswith("<system-reminder>")]
+            if user_texts:
+                return user_texts[-1]
+            return texts[-1]
     return ""
 
 
@@ -256,7 +295,10 @@ class ClaudeAPIMonitor:
 
     def response(self, flow: http.HTTPFlow):
         if flow.request.host   != "api.anthropic.com": return
-        if flow.request.path   != "/v1/messages":       return
+        # path includes query string, strip it before matching.
+        # Cowork uses /v1/messages?beta=true — must still match.
+        path = flow.request.path.split("?", 1)[0]
+        if path != "/v1/messages":                      return
         if flow.request.method != "POST":               return
 
         try:
@@ -268,6 +310,13 @@ class ClaudeAPIMonitor:
         messages = req.get("messages", [])
         prompt   = _extract_prompt_api(messages)
         client   = _detect_client(flow.request.headers)
+
+        # Cowork = Desktop hitting /v1/messages?beta=true with cowork tools / metadata.
+        # Regular Desktop chat goes through claude.ai/.../chat_conversations, never here.
+        if client == "claude-desktop":
+            client = "claude-desktop-cowork"
+        elif client == "api" and _looks_like_cowork(req, flow.request.headers):
+            client = "claude-desktop-cowork"
 
         resp_text = flow.response.content.decode("utf-8", errors="replace")
         ct        = flow.response.headers.get("content-type", "")
@@ -339,7 +388,8 @@ class ClaudeDesktopMonitor:
             return
         if flow.request.method != "POST":
             return
-        if not _COMPLETION_RE.match(flow.request.path):
+        path = flow.request.path.split("?", 1)[0]
+        if not _COMPLETION_RE.match(path):
             return
 
         ct     = flow.response.headers.get("content-type", "")
@@ -412,10 +462,15 @@ class ClaudeDesktopMonitor:
               f"in={inp:,} out={out:,} | ${log['cost_usd']:.5f} | {_log_path().name}")
 
 
+# Hosts to scan in discovery — covers Claude.ai web/desktop, Anthropic API,
+# Cowork backend (dust.anthropic.com etc.), and any other anthropic/claude subdomain.
+_DISCOVERY_HOSTS = ("anthropic.com", "claude.ai", "claudeusercontent.com")
+
+
 # ── Discovery addon (keep for debugging other endpoints) ─────────────────────
 class ClaudeDesktopDiscovery:
     """
-    Logs non-completion POSTs to claude.ai for debugging.
+    Logs non-completion POSTs to any monitored Anthropic/Claude host.
     Skips the completion endpoint (handled by ClaudeDesktopMonitor).
     """
     DISCOVERY_FILE = LOG_DIR / "claude_desktop_discovery.jsonl"
@@ -424,15 +479,18 @@ class ClaudeDesktopDiscovery:
 
     def response(self, flow: http.HTTPFlow):
         host = flow.request.host
-        if "claude.ai" not in host:
+        if not any(h in host for h in _DISCOVERY_HOSTS):
             return
         if flow.request.method != "POST":
             return
 
         path = flow.request.path
+        path_no_query = path.split("?", 1)[0]
 
-        # Skip already-handled completion endpoint
-        if _COMPLETION_RE.match(path):
+        # Skip already-handled completion endpoints (claude.ai + api.anthropic.com)
+        if _COMPLETION_RE.match(path_no_query):
+            return
+        if host == "api.anthropic.com" and path_no_query == "/v1/messages":
             return
 
         if any(path.startswith(s) for s in self.SKIP_PATHS):
@@ -561,6 +619,188 @@ class ClaudeAccountSniffer:
                   f"(add to whitelist if this is the current user)")
 
 
+# ── Bridge WebSocket monitor (Claude Code / VSCode account-login) ───────────
+class ClaudeBridgeMonitor:
+    """
+    Parses bridge.claudeusercontent.com WebSocket sessions into structured logs.
+
+    Bridge protocol variants handled:
+      A) Wrapped HTTP: {type:"request", id, body:{model, messages, ...}}
+         Response:     {type:"stream_event"|"response", id, data:"...SSE..."}
+      B) Raw API:      top-level {messages:[...], model:...} (no wrapper)
+         Response:     SSE events forwarded as-is (same as api.anthropic.com)
+      C) Unknown:      logged to discovery file and skipped
+    """
+
+    # Map bridge client_type → our log client string
+    _CLIENT_MAP = {
+        "claude-code":      "claude-code-cli",
+        "cli":              "claude-code-cli",
+        "vscode":           "claude-code-vscode",
+        "chrome-extension": "browser-extension",
+    }
+
+    def __init__(self):
+        self._sessions = {}   # id(flow) -> session dict
+
+    # ── mitmproxy hooks ──────────────────────────────────────────────────────
+
+    def websocket_start(self, flow: http.HTTPFlow):
+        if "bridge.claudeusercontent.com" not in flow.request.host:
+            return
+        # Infer client from HTTP headers on the WS upgrade request
+        client = _detect_client(flow.request.headers)
+        self._sessions[id(flow)] = {
+            "client":  client,
+            "pending": {},        # req_id -> req state
+        }
+        print(f"[claude-bridge] WS opened path={flow.request.path} client={client}")
+
+    def websocket_end(self, flow: http.HTTPFlow):
+        sess = self._sessions.pop(id(flow), None)
+        # Flush any incomplete requests (e.g. connection dropped mid-stream)
+        if sess:
+            for req_id in list(sess["pending"]):
+                self._flush(sess, req_id)
+
+    def websocket_message(self, flow: http.HTTPFlow):
+        if "bridge.claudeusercontent.com" not in flow.request.host:
+            return
+        sess = self._sessions.get(id(flow))
+        if sess is None:
+            return
+
+        msg = flow.websocket.messages[-1]
+        if not msg.is_text or not msg.content:
+            return
+
+        try:
+            text = msg.content.decode("utf-8", errors="replace")
+            data = json.loads(text)
+        except Exception:
+            return
+
+        t = data.get("type", "")
+
+        # Update client identity when we see the connect handshake
+        if t == "connect" and msg.from_client:
+            ct = data.get("client_type", "")
+            if ct in self._CLIENT_MAP:
+                sess["client"] = self._CLIENT_MAP[ct]
+            return
+
+        if t in ("ping", "pong", "error"):
+            return
+
+        if msg.from_client:
+            self._handle_request(sess, data)
+        else:
+            self._handle_response(sess, data)
+
+    # ── Internal helpers ─────────────────────────────────────────────────────
+
+    def _handle_request(self, sess, data):
+        """Detect outbound API request and start tracking it."""
+        req_id = data.get("id") or data.get("request_id")
+
+        # Unwrap possible envelope formats
+        body = (
+            data.get("body") or
+            data.get("params") or
+            data.get("request") or
+            (data if "messages" in data else None)
+        )
+
+        if not isinstance(body, dict) or "messages" not in body:
+            return
+
+        model  = body.get("model", "unknown")
+        prompt = _extract_prompt_api(body["messages"])
+
+        if req_id is None:
+            req_id = str(uuid.uuid4())
+
+        sess["pending"][req_id] = {
+            "model":    model,
+            "prompt":   prompt,
+            "response": "",
+            "inp": 0, "out": 0, "cr": 0, "cw": 0,
+        }
+        print(f"[claude-bridge] → req {str(req_id)[:8]} | {model} | prompt={len(prompt)}ch")
+
+    def _handle_response(self, sess, data):
+        """Accumulate streaming response events and flush on completion."""
+        t      = data.get("type", "")
+        req_id = data.get("id") or data.get("request_id")
+
+        # Resolve which pending request this belongs to
+        if req_id and req_id in sess["pending"]:
+            req = sess["pending"][req_id]
+        elif len(sess["pending"]) == 1:
+            req_id = next(iter(sess["pending"]))
+            req    = sess["pending"][req_id]
+        else:
+            return
+
+        # --- Format A: SSE text wrapped in a data/body field ---
+        sse_payload = data.get("data") or data.get("body") or data.get("sse") or ""
+        if isinstance(sse_payload, str) and sse_payload:
+            parsed = _parse_sse_api(sse_payload)
+            req["response"] += parsed.get("response", "")
+            if parsed.get("input_tokens"):          req["inp"] = parsed["input_tokens"]
+            if parsed.get("output_tokens"):         req["out"] = parsed["output_tokens"]
+            if parsed.get("cache_read_tokens"):     req["cr"]  = parsed["cache_read_tokens"]
+            if parsed.get("cache_creation_tokens"): req["cw"]  = parsed["cache_creation_tokens"]
+
+        # --- Format B: raw SSE event types forwarded as JSON ---
+        if t == "message_start":
+            u = data.get("message", {}).get("usage", {})
+            req["inp"] = u.get("input_tokens",               req["inp"])
+            req["cr"]  = u.get("cache_read_input_tokens",    req["cr"])
+            req["cw"]  = u.get("cache_creation_input_tokens",req["cw"])
+        elif t == "content_block_delta":
+            req["response"] += data.get("delta", {}).get("text", "")
+        elif t == "message_delta":
+            req["out"] = data.get("usage", {}).get("output_tokens", req["out"])
+
+        # Completion signals
+        if t in ("message_stop", "done", "complete", "end") or data.get("done"):
+            self._flush(sess, req_id)
+
+    def _flush(self, sess, req_id):
+        req = sess["pending"].pop(req_id, None)
+        if not req or not req["prompt"]:
+            return
+
+        model = req["model"]
+        prompt = req["prompt"]
+        inp, out = req["inp"], req["out"]
+        cr, cw   = req["cr"],  req["cw"]
+
+        log = {
+            "id":                    str(uuid.uuid4()),
+            "ts":                    int(datetime.now().timestamp() * 1000),
+            "client":                sess["client"],
+            "account_email":         current_email(),
+            "machine_name":          HOSTNAME,
+            "model":                 model,
+            "prompt":                prompt,
+            "prompt_chars":          len(prompt),
+            "response_chars":        len(req["response"]),
+            "input_tokens":          inp,
+            "output_tokens":         out,
+            "cache_creation_tokens": cw,
+            "cache_read_tokens":     cr,
+            "total_tokens":          inp + out + cr + cw,
+            "cost_usd":              _calc_cost(model, inp, out, cr, cw),
+        }
+
+        _write_local(log)
+        threading.Thread(target=_send_log, args=(log,), daemon=True).start()
+        print(f"[claude-bridge] ✓ {sess['client']} | {model} | "
+              f"prompt={len(prompt)}ch | in={inp:,} out={out:,} | ${log['cost_usd']:.5f}")
+
+
 # ── Bridge WebSocket discovery (Claude Code account-login) ──────────────────
 class ClaudeBridgeDiscovery:
     """
@@ -588,16 +828,25 @@ class ClaudeBridgeDiscovery:
         self._write(entry)
         print(f"[claude-bridge] WS opened {flow.request.path}")
 
+    # Message types that ClaudeBridgeMonitor already handles — skip in discovery
+    _MONITOR_TYPES = {
+        "connect", "ping", "pong",
+        "request", "response",
+        "message_start", "content_block_start", "content_block_delta",
+        "content_block_stop", "message_delta", "message_stop",
+        "stream_event", "done", "complete", "end",
+    }
+
     def websocket_message(self, flow: http.HTTPFlow):
         if "bridge.claudeusercontent.com" not in flow.request.host:
             return
         if flow.websocket is None or not flow.websocket.messages:
             return
         msg = flow.websocket.messages[-1]
-        # msg.from_client = True if sent by client (prompt), False if from server (response)
+
         direction = "client_to_server" if msg.from_client else "server_to_client"
-        content = msg.content
-        size = len(content) if content else 0
+        content   = msg.content
+        size      = len(content) if content else 0
 
         entry = {
             "ts":        int(datetime.now().timestamp() * 1000),
@@ -607,13 +856,13 @@ class ClaudeBridgeDiscovery:
             "size":      size,
         }
 
-        # Try to capture preview (first 500 bytes)
+        parsed_json = None
         if msg.is_text and content:
             try:
                 text = content.decode("utf-8", errors="replace")
-                # Try parsing as JSON for nicer logging
                 try:
-                    entry["json"] = json.loads(text)
+                    parsed_json = json.loads(text)
+                    entry["json"] = parsed_json
                 except Exception:
                     entry["text_preview"] = text[:500]
             except Exception:
@@ -621,8 +870,12 @@ class ClaudeBridgeDiscovery:
         else:
             entry["raw_preview"] = repr(content[:200]) if content else ""
 
+        # Skip types already handled by ClaudeBridgeMonitor
+        if parsed_json and parsed_json.get("type") in self._MONITOR_TYPES:
+            return
+
         self._write(entry)
-        print(f"[claude-bridge] WS {direction} | {size}b {'text' if msg.is_text else 'binary'}")
+        print(f"[claude-bridge-discovery] WS {direction} | {size}b {'text' if msg.is_text else 'binary'}")
 
     def _write(self, entry: dict):
         try:
@@ -632,10 +885,45 @@ class ClaudeBridgeDiscovery:
             pass
 
 
+# ── Connection sniffer: log every host the client tries to reach ────────────
+class ClaudeConnectionLogger:
+    """
+    Logs SNI hostname of every TLS connection attempt — including hosts that
+    are passed through (not MITM'd). Use this to discover unknown hosts that
+    Cowork / Claude Desktop reaches but our addons can't see.
+
+    Each unique SNI is logged once per session.
+    """
+    CONN_FILE = LOG_DIR / "claude_connections.jsonl"
+    _SEEN = set()
+
+    def tls_clienthello(self, data):
+        try:
+            sni = (data.client_hello.sni or "").lower()
+        except Exception:
+            return
+        if not sni or sni in self._SEEN:
+            return
+        self._SEEN.add(sni)
+
+        entry = {
+            "ts":  int(datetime.now().timestamp() * 1000),
+            "sni": sni,
+        }
+        try:
+            with open(self.CONN_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass
+        print(f"[claude-conn] SNI seen: {sni}")
+
+
 addons = [
+    ClaudeConnectionLogger(),   # log all hosts client connects to (incl. passthrough)
     ClaudeAccountSniffer(),     # detect email first so completions know it
-    ClaudeAPIMonitor(),         # api.anthropic.com (API key / Claude Code w/ ANTHROPIC_BASE_URL)
-    ClaudeDesktopMonitor(),     # claude.ai chat completion (Desktop app)
+    ClaudeAPIMonitor(),         # api.anthropic.com (API key / Claude Code CLI & VSCode)
+    ClaudeDesktopMonitor(),     # claude.ai chat completion (Desktop app / browser)
     ClaudeDesktopDiscovery(),   # log other claude.ai POSTs for debugging
-    ClaudeBridgeDiscovery(),    # log bridge.claudeusercontent.com WebSocket frames
+    ClaudeBridgeMonitor(),      # bridge.claudeusercontent.com — Claude Code OAuth sessions
+    ClaudeBridgeDiscovery(),    # log unknown bridge WS frames for debugging
 ]
