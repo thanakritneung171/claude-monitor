@@ -33,6 +33,11 @@ Write-Host ""
 Write-Host "  First time? Run install-cert.ps1 as Administrator" -ForegroundColor Yellow
 Write-Host ""
 
-# Run mitmproxy — MITM เฉพาะ claude.ai, ปล่อย traffic อื่นผ่านตรงๆ
+# Run mitmproxy — MITM only Claude-related hosts, pass everything else through
+#   claude.ai                       → Claude.ai Desktop app
+#   api.anthropic.com               → API key users (Claude Code, VSCode, SDKs)
+#   bridge.claudeusercontent.com    → Claude Code account-login (WebSocket)
+$allowHosts = "(claude\.ai|api\.anthropic\.com|bridge\.claudeusercontent\.com)"
+
 Set-Location $here
-mitmdump -s addon.py --listen-port $port -q --allow-hosts "claude.ai"
+mitmdump -s addon.py --listen-port $port -q --allow-hosts $allowHosts

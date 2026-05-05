@@ -25,16 +25,29 @@ from mitmproxy import http
 # ── Load config ───────────────────────────────────────────────────────────────
 try:
     import config
-    WORKER_URL    = config.WORKER_URL.rstrip("/")
-    API_KEY       = config.API_KEY
-    ACCOUNT_EMAIL = getattr(config, "ACCOUNT_EMAIL", "")
+    WORKER_URL = config.WORKER_URL.rstrip("/")
+    API_KEY    = config.API_KEY
 except ImportError:
     raise SystemExit("config.py not found — copy config.example.py → config.py and fill in values.")
+
+# Account info cache — auto-populated by ClaudeAccountSniffer from claude.ai API responses.
+# If no email is detected (e.g., API key users), account_email stays empty.
+_ACCOUNT = {
+    "email":    "",
+    "name":     "",
+    "uuid":     "",
+    "org_uuid": "",
+}
+
+def current_email() -> str:
+    return _ACCOUNT["email"]
 
 HOSTNAME = socket.gethostname()
 
 # ── Local log directory (../log relative to this file) ───────────────────────
-LOG_DIR  = Path(__file__).parent.parent / "log"
+# resolve() makes the path absolute first — without it, Path(".").parent == Path(".")
+# and the log dir would land at ./log relative to cwd instead of project/log
+LOG_DIR  = Path(__file__).resolve().parent.parent / "log"
 LOG_DIR.mkdir(exist_ok=True)
 
 def _log_path() -> Path:
@@ -292,7 +305,7 @@ class ClaudeAPIMonitor:
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                client,
-            "account_email":         ACCOUNT_EMAIL,
+            "account_email":         current_email(),
             "machine_name":          HOSTNAME,
             "model":                 model,
             "prompt":                prompt,
@@ -378,7 +391,7 @@ class ClaudeDesktopMonitor:
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                "claude-desktop",
-            "account_email":         ACCOUNT_EMAIL,
+            "account_email":         current_email(),
             "machine_name":          HOSTNAME,
             "model":                 model,
             "prompt":                prompt,
@@ -454,4 +467,175 @@ class ClaudeDesktopDiscovery:
             pass
 
 
-addons = [ClaudeAPIMonitor(), ClaudeDesktopMonitor(), ClaudeDesktopDiscovery()]
+# ── Account sniffer: auto-detect email from claude.ai API responses ─────────
+def _looks_like_email(s) -> bool:
+    return isinstance(s, str) and "@" in s and "." in s.split("@", 1)[1]
+
+
+# Strict path matchers — only endpoints that return THE CURRENT USER's info,
+# never lists of members / support emails / marketing config.
+_CURRENT_ACCOUNT_RE = re.compile(r"^/api/auth/current_account$")
+_ACCOUNT_RE         = re.compile(r"^/api/account/?$")
+# Matches all bootstrap variants:
+#   /api/bootstrap
+#   /api/bootstrap/{org_uuid}
+#   /edge-api/bootstrap/{org_uuid}/app_start   ← claude.ai web/desktop uses this
+_BOOTSTRAP_RE       = re.compile(r"^/(api|edge-api)/bootstrap(/[^/]+){0,2}/?$")
+
+
+def _extract_current_user(data) -> dict:
+    """
+    Pull current-user fields ONLY from well-known top-level shapes.
+    No recursive search — that picks up support/marketing emails like
+    hello@accoil.com which gets baked into Claude.ai org config blobs.
+    """
+    if not isinstance(data, dict):
+        return {}
+
+    # Shape A: /api/auth/current_account → {email_address, full_name, uuid, ...}
+    # Shape B: /api/account              → {email_address, ...}
+    if _looks_like_email(data.get("email_address")):
+        return {
+            "email": data["email_address"],
+            "name":  data.get("full_name") or data.get("display_name") or "",
+            "uuid":  data.get("uuid") or "",
+        }
+
+    # Shape C: /api/bootstrap/{org} → {"account": {email_address, ...}, ...}
+    acct = data.get("account")
+    if isinstance(acct, dict) and _looks_like_email(acct.get("email_address")):
+        return {
+            "email": acct["email_address"],
+            "name":  acct.get("full_name") or "",
+            "uuid":  acct.get("uuid") or "",
+        }
+
+    return {}
+
+
+class ClaudeAccountSniffer:
+    """
+    Watches claude.ai responses and caches the current user's email.
+
+    Strategy:
+      1. WHITELIST (trusted): exact paths that return current user only.
+         Use these results immediately and stop.
+      2. DISCOVERY (debug):  any other claude.ai JSON response that has a
+         top-level `email_address` or `account.email_address`. We print
+         the path so we can learn the real endpoints, but DO NOT cache
+         the value (could be a member list / support address).
+    """
+
+    WHITELIST_RES = [_CURRENT_ACCOUNT_RE, _ACCOUNT_RE, _BOOTSTRAP_RE]
+    _SEEN_PATHS = set()  # avoid printing the same discovery line repeatedly
+
+    def response(self, flow: http.HTTPFlow):
+        if "claude.ai" not in flow.request.host:
+            return
+        path = flow.request.path.split("?", 1)[0]
+
+        if "json" not in flow.response.headers.get("content-type", ""):
+            return
+
+        try:
+            data = json.loads(flow.response.content)
+        except Exception:
+            return
+
+        info = _extract_current_user(data)
+
+        # Whitelisted endpoint → trust + cache
+        if info and any(rgx.match(path) for rgx in self.WHITELIST_RES):
+            email = info["email"]
+            if email != _ACCOUNT["email"]:
+                _ACCOUNT["email"] = email
+                _ACCOUNT["name"]  = info.get("name", "") or _ACCOUNT["name"]
+                _ACCOUNT["uuid"]  = info.get("uuid", "") or _ACCOUNT["uuid"]
+                print(f"[claude-account] ✓ detected email: {email} (from {path})")
+            return
+
+        # Non-whitelisted but contains a current-user-shaped email → log for review
+        if info and path not in self._SEEN_PATHS:
+            self._SEEN_PATHS.add(path)
+            print(f"[claude-account] ? candidate path: {path} → email_address={info['email']}  "
+                  f"(add to whitelist if this is the current user)")
+
+
+# ── Bridge WebSocket discovery (Claude Code account-login) ──────────────────
+class ClaudeBridgeDiscovery:
+    """
+    Claude Code CLI / VSCode with account login uses a WebSocket to
+    bridge.claudeusercontent.com instead of the REST API.
+
+    This addon logs all WebSocket frames to log/claude_bridge_discovery.jsonl
+    so we can learn the protocol and add proper monitoring.
+
+    Once we know the message format, we can add parsing/logging similar to
+    ClaudeDesktopMonitor.
+    """
+    BRIDGE_FILE = LOG_DIR / "claude_bridge_discovery.jsonl"
+
+    def websocket_start(self, flow: http.HTTPFlow):
+        if "bridge.claudeusercontent.com" not in flow.request.host:
+            return
+        entry = {
+            "ts":    int(datetime.now().timestamp() * 1000),
+            "event": "ws_start",
+            "host":  flow.request.host,
+            "path":  flow.request.path,
+            "ua":    flow.request.headers.get("user-agent", ""),
+        }
+        self._write(entry)
+        print(f"[claude-bridge] WS opened {flow.request.path}")
+
+    def websocket_message(self, flow: http.HTTPFlow):
+        if "bridge.claudeusercontent.com" not in flow.request.host:
+            return
+        if flow.websocket is None or not flow.websocket.messages:
+            return
+        msg = flow.websocket.messages[-1]
+        # msg.from_client = True if sent by client (prompt), False if from server (response)
+        direction = "client_to_server" if msg.from_client else "server_to_client"
+        content = msg.content
+        size = len(content) if content else 0
+
+        entry = {
+            "ts":        int(datetime.now().timestamp() * 1000),
+            "event":     "ws_msg",
+            "direction": direction,
+            "is_text":   msg.is_text,
+            "size":      size,
+        }
+
+        # Try to capture preview (first 500 bytes)
+        if msg.is_text and content:
+            try:
+                text = content.decode("utf-8", errors="replace")
+                # Try parsing as JSON for nicer logging
+                try:
+                    entry["json"] = json.loads(text)
+                except Exception:
+                    entry["text_preview"] = text[:500]
+            except Exception:
+                entry["raw_preview"] = repr(content[:200])
+        else:
+            entry["raw_preview"] = repr(content[:200]) if content else ""
+
+        self._write(entry)
+        print(f"[claude-bridge] WS {direction} | {size}b {'text' if msg.is_text else 'binary'}")
+
+    def _write(self, entry: dict):
+        try:
+            with open(self.BRIDGE_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+
+addons = [
+    ClaudeAccountSniffer(),     # detect email first so completions know it
+    ClaudeAPIMonitor(),         # api.anthropic.com (API key / Claude Code w/ ANTHROPIC_BASE_URL)
+    ClaudeDesktopMonitor(),     # claude.ai chat completion (Desktop app)
+    ClaudeDesktopDiscovery(),   # log other claude.ai POSTs for debugging
+    ClaudeBridgeDiscovery(),    # log bridge.claudeusercontent.com WebSocket frames
+]
