@@ -1,257 +1,364 @@
 # คู่มือนักพัฒนา 👨‍💻
 
-เอกสารอ้างอิงสำหรับผู้ที่ต้องการแก้ไขหรือต่อยอดระบบ Claude Monitor
+เอกสารอ้างอิงสำหรับผู้แก้ไข/ต่อยอด Claude Monitor
 
 ## โครงสร้างโค้ด
 
 ```
 claude-monitor/
 ├── proxy/
-│   ├── addon.py              # mitmproxy addon หลัก — จุดเริ่มต้นทุกอย่าง
-│   ├── config.py             # ค่าตั้งต้น: WORKER_URL, API_KEY, PROXY_PORT
-│   └── config.example.py     # template
-│
+│   ├── addon.py                  # mitmproxy addon หลัก — entry point ทุกอย่าง
+│   ├── config.py                 # WORKER_URL, API_KEY, PROXY_PORT
+│   ├── config.example.py
+│   ├── start.ps1                 # รัน mitmdump + addon (allow-hosts regex)
+│   ├── install-claude-proxy.ps1  # ตั้ง persistent env vars + settings.json
+│   └── uninstall-claude-proxy.ps1
 ├── worker/
-│   ├── src/index.ts          # Worker + HTML dashboard (ไฟล์เดียวจบ)
-│   └── wrangler.toml
-│
-└── log/                      # JSONL logs (auto-created)
+│   └── src/index.ts              # Worker + Dashboard (ไฟล์เดียว)
+└── log/                          # JSONL logs (auto)
 ```
 
 ---
 
-## อธิบาย proxy/addon.py
+## ทำความเข้าใจ `proxy/addon.py`
 
-### การทำงานของ mitmproxy Addon
-
-mitmproxy จะเรียก `response()` ทุกครั้งที่ได้รับ HTTP response — addon แต่ละตัวจะตรวจว่า flow นั้นเกี่ยวข้องกับตัวเองหรือเปล่า แล้วจึงทำงาน
+### ลำดับการลงทะเบียน addons
 
 ```python
 addons = [
-    ClaudeAccountSniffer(),     # 1. ตรวจ email ก่อน
-    ClaudeAPIMonitor(),         # 2. ดัก api.anthropic.com
-    ClaudeDesktopMonitor(),     # 3. ดัก claude.ai
-    ClaudeDesktopDiscovery(),   # 4. debug: บันทึก POST อื่นๆ
-    ClaudeBridgeDiscovery(),    # 5. debug: บันทึก WebSocket
+    ClaudeConnectionLogger(),   # 0. log SNI ของทุก TLS connection
+    ClaudeAccountSniffer(),     # 1. sniff email ก่อน — ให้ email พร้อมตอน log
+    ClaudeAPIMonitor(),         # 2. api.anthropic.com/v1/messages (รวม ?beta=true)
+    ClaudeDesktopMonitor(),     # 3. claude.ai/.../completion (Chat ปกติ)
+    ClaudeDesktopDiscovery(),   # 4. debug — POST อื่นๆ ที่ไม่มี matcher
+    ClaudeBridgeMonitor(),      # 5. bridge.claudeusercontent.com WS (Code OAuth, Cowork chrome)
+    ClaudeBridgeDiscovery(),    # 6. debug — WS frames ที่ไม่รู้จัก
 ]
 ```
 
-> **สำคัญ:** `ClaudeAccountSniffer` ต้องอยู่ก่อนเสมอ เพื่อให้ email พร้อมก่อนที่ completion จะถูก log
+> **ลำดับสำคัญ:** `ClaudeAccountSniffer` ต้องอยู่ก่อน Monitor ทุกตัวที่เขียน log — เพื่อให้ `current_email()` มีค่าก่อนถูก call
 
 ---
+
+## Monitor classes
 
 ### ClaudeAPIMonitor
 
-ดักจับ `api.anthropic.com/v1/messages` — ใช้โดย Claude Code และ API key users
+ดักจับ `api.anthropic.com/v1/messages` (รวม `?beta=true`)
+
+**ครอบคลุม:**
+- Claude Code CLI (API key หรือ OAuth ที่ใช้ /v1/messages)
+- Claude Code VSCode
+- Cowork (Desktop)
+- Code tab (Desktop)
+- Raw API SDK ใดก็ตาม
+
+**ขั้นตอน:**
 
 ```python
-def response(self, flow: http.HTTPFlow):
-    # 1. กรองเฉพาะ request ที่ต้องการ
-    if flow.request.host   != "api.anthropic.com": return
-    if flow.request.path   != "/v1/messages":       return
-    if flow.request.method != "POST":               return
+def response(self, flow):
+    if flow.request.host != "api.anthropic.com": return
+    path = flow.request.path.split("?", 1)[0]   # ตัด query (?beta=true)
+    if path != "/v1/messages": return
+    if flow.request.method != "POST": return
 
-    # 2. อ่าน request body → ดึง model + prompt
-    req    = json.loads(flow.request.content)
-    model  = req.get("model", "unknown")
-    prompt = _extract_prompt_api(req.get("messages", []))
+    req       = json.loads(flow.request.content)
+    model     = req.get("model")
+    messages  = req.get("messages", [])
+    prompt    = _extract_prompt_api(messages)
+    client    = _detect_client(flow.request.headers)
 
-    # 3. Parse response (SSE หรือ JSON)
-    parsed = _parse_sse_api(resp_text)  # or json parse
+    # Body override (ทำหลัง header detection)
+    if _looks_like_cowork(req, headers):
+        client = "claude-desktop-cowork"
+    elif _looks_like_code(req) and client == "api":
+        client = "claude-code-cli"
 
-    # 4. บันทึก
+    parsed = _parse_sse_api(resp_text)  # หรือ JSON fallback
     self._log(client, model, prompt, parsed)
 ```
 
----
-
 ### ClaudeDesktopMonitor
 
-ดักจับ `claude.ai/api/organizations/.../completion` — ใช้โดย Claude Desktop app
+ดัก `claude.ai/api/organizations/{org}/chat_conversations/{conv}/completion`
 
-รองรับ 2 formats:
-- **SSE** (`event-stream`) — response เป็น stream
-- **JSON** — response ธรรมดา (fallback)
+ใช้โดย Claude Desktop / Claude.ai web ในโหมด Chat ปกติ
 
----
+**รองรับ:**
+- SSE (`event-stream`) — streaming response
+- JSON fallback — non-streaming response
+
+### ClaudeBridgeMonitor
+
+ดัก WebSocket session ที่ `bridge.claudeusercontent.com`
+
+ใช้โดย Claude Code OAuth (account login) และ Cowork chrome agent
+
+**โปรโตคอลที่รองรับ:**
+- **Format A**: Wrapped HTTP — `{type: "request", id, body: {messages, ...}}`
+- **Format B**: Raw API — `{messages: [...], model: ...}` (no wrapper)
+- **Format C**: Unknown — log ลง discovery file
+
+**State per session:** เก็บ pending requests, accumulate streaming events, flush เมื่อเจอ completion signal (`message_stop` / `done` / `complete` / `end`)
 
 ### ClaudeAccountSniffer
 
-ตรวจ email จาก response ของ claude.ai โดยใช้ whitelist:
+อ่าน email จาก response ของ claude.ai โดยใช้ **whitelist regex**:
 
 ```python
 WHITELIST = [
-    r"^/api/auth/current_account$",   # endpoint ที่ return user ปัจจุบัน
+    r"^/api/auth/current_account$",
     r"^/api/account/?$",
     r"^/(api|edge-api)/bootstrap(/[^/]+){0,2}/?$",
 ]
 ```
 
-**ทำไมต้อง whitelist?**
-
-claude.ai มี API หลายตัวที่ return email เช่น org member list, support email ใน config — ถ้า search ทั้งหมดจะได้ email ผิด
+**ทำไมต้อง whitelist:** claude.ai มี endpoint หลายตัวที่ return email field — เช่น org member list, support email config — ถ้า search ทั้งหมดจะได้ email ผิดคน เห็น discovery print ก่อนเพิ่มลง whitelist
 
 ---
 
-### SSE Parsing
+## Discovery classes
 
-Claude API ส่ง response เป็น Server-Sent Events (SSE):
+### ClaudeConnectionLogger
 
-```
-data: {"type": "message_start", "message": {"usage": {"input_tokens": 234}}}
-data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "สวัสดี"}}
-data: {"type": "message_delta", "usage": {"output_tokens": 89}}
-data: [DONE]
-```
+ใช้ `tls_clienthello` hook ของ mitmproxy — fire ทุก connection (รวม passthrough)
 
-`_parse_sse_api()` วนอ่านทุกบรรทัด สะสม text และดึง token counts
-
----
-
-### ระบบ Logging
-
-ทุก API call จะถูกบันทึก 2 ที่พร้อมกัน (parallel):
+**ใช้ทำอะไร:** หา host ใหม่ที่ Claude/subprocess เชื่อมต่อ แต่ proxy ยังไม่ MITM
 
 ```python
-# 1. บันทึกในเครื่องทันที (synchronous)
-_write_local(log)
-
-# 2. ส่งไป Worker (async, ไม่บล็อก main thread)
-threading.Thread(target=_send_log, args=(log,), daemon=True).start()
+def tls_clienthello(self, data):
+    sni = (data.client_hello.sni or "").lower()
+    if not sni or sni in self._SEEN: return
+    self._SEEN.add(sni)
+    # log ลง log/claude_connections.jsonl
 ```
 
-**ทำไม bypass proxy ตอนส่ง Worker?**
+### ClaudeDesktopDiscovery / ClaudeBridgeDiscovery
 
-addon รันใน mitmproxy ซึ่งเป็น proxy เอง — ถ้าส่ง request ผ่าน system proxy จะวนกลับมาหาตัวเอง (loopback):
-
-```python
-_no_proxy_opener = urllib.request.build_opener(
-    urllib.request.ProxyHandler({})  # ← บังคับไม่ใช้ proxy
-)
-```
+Log POST/WS ที่ Monitor classes ไม่ handle → ใช้ค้นหา endpoint ใหม่ที่ Anthropic ออก
 
 ---
 
-## อธิบาย worker/src/index.ts
+## Helper functions
 
-Worker ทำ 3 อย่าง:
+### `_detect_client(headers) -> str`
 
-### POST /log — รับข้อมูลจาก addon
+อ่าน 4 headers แล้วตัดสิน:
+
+```python
+ua             = "user-agent"
+name           = "anthropic-client-name"
+app            = "x-app"
+ctx            = "x-client-context"
+
+is_claude_code = any "claude-code" ใน 3 ช่องแรก
+is_electron    = "electron" ใน ua  # ไม่เอา "claude/" เพราะ CLI ก็มี
+is_vscode      = "vscode" ใน ctx/ua/name
+```
+
+**Decision tree:**
+
+```
+is_claude_code?
+├── electron + ไม่ใช่ vscode  →  claude-desktop-code
+├── vscode                    →  claude-code-vscode
+└── else                      →  claude-code-cli
+
+ไม่ใช่ claude_code:
+├── vscode                    →  claude-code-vscode
+├── electron / anthropic      →  claude-desktop
+└── else                      →  api
+```
+
+### `_looks_like_cowork(req, headers) -> bool`
+
+True ถ้า body มี `mcp__cowork__*` ใน tools หรือ metadata มีคำว่า cowork
+
+### `_looks_like_code(req) -> bool`
+
+True ถ้า body มี Claude Code's classic tools (`Bash`, `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Task`, `TodoWrite`, `WebFetch`, `WebSearch`, `MultiEdit`, `NotebookEdit`, `ExitPlanMode`, `BashOutput`, `KillBash`) **และไม่มี `mcp__cowork__*`**
+
+### `_extract_prompt_api(messages) -> str`
+
+หา user message ตัวสุดท้าย แล้ว:
+- ถ้า content เป็น string → คืนค่าเลย
+- ถ้าเป็น list ของ blocks → กรอง text blocks → ข้าม block ที่เริ่มด้วย `<system-reminder>` (Cowork inject) → คืน text สุดท้าย
+
+### `_parse_sse_api(text) / _parse_sse_desktop(text)`
+
+วน SSE lines, สะสม `text_delta`, ดึง `usage` จาก `message_start` / `message_delta`
+
+### `_calc_cost(model, inp, out, cr, cw) -> float`
+
+```python
+tier = "opus" if "opus" in model else \
+       "haiku" if "haiku" in model else \
+       "sonnet"
+p = _PRICE[tier]
+return (inp*p["inp"] + out*p["out"] + cr*p["cr"] + cw*p["cw"]) / 1_000_000
+```
+
+### `_should_log(email) -> bool`
+
+```python
+if not EMAIL_FILTER_ENABLED: return True
+if not EMAIL_FILTER_SUBSTRING: return True
+return EMAIL_FILTER_SUBSTRING.lower() in (email or "").lower()
+```
+
+ใช้ก่อน `_write_local()` และ `_send_log()` ทุกที่
+
+### `_send_log(payload)`
+
+ใช้ urllib opener ที่ bypass system proxy:
+
+```python
+_no_proxy_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+```
+
+**เหตุผล:** addon รันใน mitmproxy → ถ้าส่ง POST ผ่าน system proxy จะ loopback กลับมาหาตัวเอง (deadlock)
+
+---
+
+## Worker — `worker/src/index.ts`
+
+### POST /log
 
 ```typescript
-// ตรวจ API key
 if (request.headers.get('X-Api-Key') !== env.API_KEY) {
     return json({ ok: false, error: 'Unauthorized' }, 401);
 }
-
-// บันทึกลง D1
 await env.DB.prepare(`INSERT OR IGNORE INTO api_logs ...`).bind(...).run();
 ```
 
-`INSERT OR IGNORE` — ป้องกัน duplicate กรณี addon ส่งซ้ำ (retry)
+`INSERT OR IGNORE` กัน duplicate กรณี addon retry
 
-### GET / — Dashboard
+### GET /
 
-Query ข้อมูลจาก D1 แบบ parallel แล้ว build HTML:
+Query parallel แล้ว build HTML inline:
 
 ```typescript
-const [rows, totals, byModel, byClient, byMachine, byAccount] = await Promise.all([
-    env.DB.prepare(`SELECT * FROM api_logs ORDER BY ts DESC LIMIT 100`).all(),
-    env.DB.prepare(`SELECT COUNT(*), SUM(input_tokens), SUM(cost_usd) ...`).first(),
-    // ... etc
-]);
+const [rows, totals, byModel, byClient, byMachine, byAccount] =
+    await Promise.all([...]);
 ```
 
-Dashboard เป็น HTML ล้วน ไม่มี framework — inline CSS + inline JS เพื่อ deploy ง่าย
+ไม่ใช้ framework — inline CSS + JS เพื่อ deploy ง่าย
 
 ---
 
-## การเพิ่มฟีเจอร์ใหม่
+## เพิ่มฟีเจอร์ใหม่
 
-### เพิ่ม endpoint ที่ต้องการ monitor
-
-ถ้าต้องการดัก endpoint ใหม่ ให้สร้าง class ใหม่:
+### เพิ่ม Monitor class สำหรับ endpoint ใหม่
 
 ```python
 class MyNewMonitor:
     def response(self, flow: http.HTTPFlow):
-        # กรองเฉพาะ endpoint ที่ต้องการ
-        if "my-endpoint.com" not in flow.request.host:
-            return
-        if flow.request.path != "/api/chat":
-            return
+        if "my-endpoint.com" not in flow.request.host: return
+        if flow.request.path != "/api/chat": return
 
-        # ดึงข้อมูล
         req    = json.loads(flow.request.content)
         prompt = req.get("message", "")
         model  = req.get("model", "unknown")
 
-        # Parse response
-        resp = flow.response.content.decode("utf-8", errors="replace")
-        # ... แปลงตามรูปแบบ response ของ endpoint นั้น
+        # Parse response (depends on format)
+        # ...
 
-        # สร้าง log object
+        email = current_email()
+        if not _should_log(email):
+            return
+
         log = {
-            "id":           str(uuid.uuid4()),
-            "ts":           int(datetime.now().timestamp() * 1000),
-            "client":       _detect_client(flow.request.headers),
-            "account_email": current_email(),
-            "machine_name": HOSTNAME,
-            "model":        model,
-            "prompt":       prompt,
-            "prompt_chars": len(prompt),
+            "id":            str(uuid.uuid4()),
+            "ts":            int(datetime.now().timestamp() * 1000),
+            "client":        _detect_client(flow.request.headers),
+            "account_email": email,
+            "machine_name":  HOSTNAME,
+            "model":         model,
+            "prompt":        prompt,
             # ... ฯลฯ
         }
-
         _write_local(log)
         threading.Thread(target=_send_log, args=(log,), daemon=True).start()
 
-# ลงทะเบียน
 addons.append(MyNewMonitor())
 ```
 
-### เพิ่ม model ราคาใหม่
+### เพิ่ม model pricing
 
 ```python
 _PRICE = {
-    "opus":     dict(inp=15,   out=75,  cr=1.50, cw=18.75),
-    "sonnet":   dict(inp=3,    out=15,  cr=0.30, cw=3.75),
-    "haiku":    dict(inp=0.80, out=4,   cr=0.08, cw=1.00),
-    "opus-4":   dict(inp=20,   out=100, cr=2.00, cw=25.00),  # ← เพิ่มใหม่
+    "opus":   dict(inp=15,   out=75,   cr=1.50, cw=18.75),
+    "sonnet": dict(inp=3,    out=15,   cr=0.30, cw=3.75),
+    "haiku":  dict(inp=0.80, out=4,    cr=0.08, cw=1.00),
+    # ถ้ามี tier ใหม่ → เพิ่มที่นี่
 }
 ```
 
-ฟังก์ชัน `_calc_cost()` จะตรวจชื่อ model แล้วเลือก tier เอง
+`_calc_cost` ปัจจุบันจับ tier ด้วย substring (`"opus" in model`) — ถ้า model name format เปลี่ยน ต้องอัปเดต logic
 
-### เพิ่ม column ใน Dashboard
+### เพิ่ม client tag ใหม่
 
-1. เพิ่มคำสั่ง SQL ใน Worker:
+1. เพิ่ม signal ใน `_detect_client` (header check) **หรือ** เพิ่ม `_looks_like_xxx` function (body check)
+2. ใน Monitor class — apply override หลัง `_detect_client`
+3. (ถ้าต้องการแสดงใน Dashboard) — Worker query already groups by `client` อัตโนมัติ ไม่ต้องเพิ่มอะไร
+
+### เพิ่ม column / chart ใน Dashboard
+
+1. เพิ่ม SQL query:
 
 ```typescript
 const byDay = await env.DB.prepare(`
-    SELECT DATE(ts/1000, 'unixepoch') as day, COUNT(*) as calls, SUM(cost_usd) as cost
+    SELECT DATE(ts/1000, 'unixepoch') as day,
+           COUNT(*) as calls,
+           SUM(cost_usd) as cost
     FROM api_logs
-    GROUP BY day
-    ORDER BY day DESC
-    LIMIT 30
+    GROUP BY day ORDER BY day DESC LIMIT 30
 `).all();
 ```
 
-2. เพิ่ม HTML ใน `buildDashboard()`:
+2. Render HTML ใน `buildDashboard()`:
 
 ```typescript
 const dailyRows = byDay.results.map(d =>
-    `<tr><td>${d.day}</td><td class="r">${num(d.calls)}</td><td class="r cost">$${num(d.cost, 4)}</td></tr>`
+    `<tr><td>${d.day}</td><td class="r">${num(d.calls)}</td><td class="r">$${num(d.cost, 4)}</td></tr>`
 ).join('');
+```
 
-// เพิ่มใน HTML:
-`<section>
-  <h2>Daily Summary</h2>
-  <table>
-    <thead><tr><th>วัน</th><th class="r">Calls</th><th class="r">Cost</th></tr></thead>
-    <tbody>${dailyRows}</tbody>
-  </table>
-</section>`
+---
+
+## Cowork & Subprocess Bypass — เรื่องที่ต้องรู้
+
+### ปัญหา
+
+Claude Desktop ของ Cowork มี **worker subprocess** ที่ไม่อ่าน Windows system proxy setting — โดย default มันต่อตรงไป Anthropic IPs (160.79.104.x) **ข้าม mitmproxy**
+
+### วิธีแก้
+
+`install-claude-proxy.ps1` ตั้ง **persistent user env vars** (HTTPS_PROXY, NODE_EXTRA_CA_CERTS, ฯลฯ) ที่ระดับ User registry
+
+เมื่อ Claude Desktop launch ใหม่ → child processes inherit env vars → ใช้ proxy ตาม
+
+### Path ของ Cowork: `?beta=true`
+
+Cowork (และ Desktop Code tab) ใช้ `api.anthropic.com/v1/messages?beta=true` (มี query string) — ไม่ใช่ path เดียวกับ Chat tab (ที่ใช้ `claude.ai/.../completion`)
+
+**ใน addon:** ต้อง strip query ก่อน match path:
+
+```python
+path = flow.request.path.split("?", 1)[0]
+if path != "/v1/messages": return
+```
+
+### `<system-reminder>` blocks
+
+Cowork inject `<system-reminder>` blocks (ลิสต์ MCP tools) ไว้ก่อน user prompt จริงในแต่ละ user message
+
+`_extract_prompt_api` ต้องข้าม blocks เหล่านี้:
+
+```python
+texts = [...all text blocks...]
+user_texts = [t for t in texts if not t.lstrip().startswith("<system-reminder>")]
+return user_texts[-1] if user_texts else texts[-1]
 ```
 
 ---
@@ -260,86 +367,64 @@ const dailyRows = byDay.results.map(d =>
 
 ### mitmproxy verbose mode
 
-```bash
+```powershell
 mitmdump -s addon.py --listen-port 8080 -vv
-# -vv แสดงทุก request/response อย่างละเอียด
 ```
 
 ### เพิ่ม print debug ใน addon
 
 ```python
-def response(self, flow: http.HTTPFlow):
-    print(f"[DEBUG] {flow.request.host}{flow.request.path}")
-    print(f"[DEBUG] status: {flow.response.status_code}")
-    print(f"[DEBUG] content-type: {flow.response.headers.get('content-type', '')}")
+def response(self, flow):
+    print(f"[DEBUG] {flow.request.host}{flow.request.path} "
+          f"ua={flow.request.headers.get('user-agent','')[:80]}")
 ```
 
-### ดู log ในเครื่อง
+### หา endpoint ใหม่ที่ Claude ออก
 
-```bash
-# Windows PowerShell
-Get-Content log\claude_2024-12-19.jsonl | Select-Object -Last 5
-
-# macOS/Linux
-tail -5 log/claude_$(date +%Y-%m-%d).jsonl | python -m json.tool
+```powershell
+# 1. ส่ง prompt ผ่าน Claude tool ที่สงสัย
+# 2. ดู discovery file
+Get-Content log\claude_desktop_discovery.jsonl | Select-Object -Last 5
+Get-Content log\claude_connections.jsonl
 ```
 
-### ทดสอบ Worker โดยตรง
+### ทดสอบ Worker /log โดยตรง
 
-```bash
-# ทดสอบ health check
-curl https://your-worker.workers.dev/health
-
-# ทดสอบ POST /log
-curl -X POST https://your-worker.workers.dev/log \
-  -H "X-Api-Key: MySecretKey123" \
-  -H "Content-Type: application/json" \
-  -d '{"id":"test-001","ts":1234567890000,"client":"api","model":"claude-3-sonnet","prompt":"ทดสอบ","input_tokens":10,"output_tokens":5,"cost_usd":0.00001}'
-
-# ดู dashboard
-curl https://your-worker.workers.dev/ | head -50
+```powershell
+curl -X POST https://your-worker.workers.dev/log `
+  -H "X-Api-Key: MySecretKey123" `
+  -H "Content-Type: application/json" `
+  -d '{"id":"test-001","ts":1234567890000,"client":"api","model":"claude-sonnet-4-6","prompt":"test","input_tokens":10,"output_tokens":5,"cost_usd":0.00001}'
 ```
 
-### Query D1 Database
+### Query D1 schema
 
-```bash
-# ดูทุกตาราง
+```powershell
 wrangler d1 execute claude-monitor --remote --command ".schema"
-
-# นับ rows
 wrangler d1 execute claude-monitor --remote --command "SELECT COUNT(*) FROM api_logs"
-
-# ค่าใช้จ่ายสัปดาห์นี้
-wrangler d1 execute claude-monitor --remote --command "
-SELECT 
-  DATE(ts/1000, 'unixepoch') as day,
-  COUNT(*) as calls,
-  ROUND(SUM(cost_usd), 4) as cost_usd
-FROM api_logs 
-WHERE ts > (strftime('%s', 'now', '-7 days') * 1000)
-GROUP BY day
-ORDER BY day DESC
-"
 ```
 
 ---
 
-## ปัญหาที่พบบ่อยในการพัฒนา
+## ปัญหาในการพัฒนา
 
 | ปัญหา | วิธีตรวจ |
-|-------|---------|
+|---|---|
 | addon โหลดไม่ได้ | `python -m py_compile proxy/addon.py` |
-| Worker deploy ไม่ได้ | ตรวจ `database_id` ใน wrangler.toml, รัน `wrangler login` |
-| D1 query return ว่าง | `wrangler d1 execute ... --command ".tables"` ตรวจว่าตารางมีจริง |
-| Dashboard ไม่โหลด | `wrangler tail` ดู error log แบบ real-time |
-| addon ไม่ดักจับ | ตรวจ `--allow-hosts`, เปิด `-vv` mode |
-| log ไม่เขียน | ตรวจสิทธิ์ write ที่ directory `log/` |
+| Worker deploy ไม่ได้ | ตรวจ `database_id` ใน `wrangler.toml`, `wrangler login` |
+| D1 query ว่าง | `wrangler d1 execute --command ".tables"` |
+| Dashboard ไม่โหลด | `wrangler tail` ดู error real-time |
+| addon ไม่ดักจับ | ตรวจ `--allow-hosts` regex, ลอง `-vv` mode |
+| log ไม่เขียน | ตรวจสิทธิ์ write `log/` directory |
+| Cowork ไม่ขึ้น log | ยังไม่รัน `install-claude-proxy.ps1` หรือยังไม่ได้ restart Claude Desktop |
+| Code/Cowork tag ผิด | ตรวจ `_looks_like_cowork`, `_looks_like_code` heuristics |
+| Email filter กรองทิ้งหมด | sniffer ยังไม่เจอ email — เปิด Claude Desktop แล้ว login ก่อน |
 
 ---
 
 ## Performance
 
-### กรณีใช้งานหนัก (หลายพัน calls/วัน)
+### กรณี calls หลายพัน/วัน
 
 **เพิ่ม index:**
 
@@ -350,23 +435,18 @@ CREATE INDEX IF NOT EXISTS idx_client_ts ON api_logs(client, ts DESC);
 "
 ```
 
-**ลบ log เก่าอัตโนมัติ:**
+**ลบ log เก่าอัตโนมัติ (cron job):**
 
 ```bash
-# สร้าง cron job หรือรันด้วยมือทุกเดือน
 wrangler d1 execute claude-monitor --remote --command \
   "DELETE FROM api_logs WHERE ts < (strftime('%s', 'now', '-90 days') * 1000)"
 ```
 
-**เก็บแค่ preview ของ prompt:**
+**Truncate prompt ใหญ่ๆ:**
 
 ```python
-def _log(self, client, model, prompt, parsed):
-    log = {
-        "prompt":       prompt[:500],   # เก็บแค่ 500 ตัวแรก
-        "prompt_chars": len(prompt),     # แต่นับ chars ทั้งหมด
-        # ...
-    }
+log["prompt"]       = prompt[:500]   # เก็บแค่ 500 ตัวแรก
+log["prompt_chars"] = len(prompt)    # นับเต็ม
 ```
 
 ---
@@ -377,6 +457,11 @@ def _log(self, client, model, prompt, parsed):
 |------|---------|
 | [proxy/addon.py](proxy/addon.py) | mitmproxy addon หลัก |
 | [proxy/config.py](proxy/config.py) | ค่าตั้งต้น (ต้องสร้างเอง) |
-| [proxy/config.example.py](proxy/config.example.py) | template config |
-| [worker/src/index.ts](worker/src/index.ts) | Cloudflare Worker + Dashboard |
+| [proxy/config.example.py](proxy/config.example.py) | template |
+| [proxy/start.ps1](proxy/start.ps1) | start mitmdump + addon |
+| [proxy/install-claude-proxy.ps1](proxy/install-claude-proxy.ps1) | ตั้ง persistent env + settings.json |
+| [proxy/uninstall-claude-proxy.ps1](proxy/uninstall-claude-proxy.ps1) | ล้าง persistent env + settings.json |
+| [proxy/enable-proxy.ps1](proxy/enable-proxy.ps1) | env vars เฉพาะ session |
+| [proxy/disable-proxy.ps1](proxy/disable-proxy.ps1) | คืน session env |
+| [worker/src/index.ts](worker/src/index.ts) | Worker + Dashboard |
 | [worker/wrangler.toml](worker/wrangler.toml) | Cloudflare config |

@@ -155,8 +155,9 @@ def _detect_client(headers) -> str:
     ctx  = str(headers.get("x-client-context",      "")).lower()
 
     is_claude_code = ("claude-code" in name or "claude-code" in ua or "claude-code" in app)
-    # Claude Desktop ships as an Electron app with UA like "Claude/x.y Electron/..."
-    is_electron    = ("electron" in ua) or ("claude/" in ua)
+    # Claude Desktop ships as an Electron app — UA always carries "electron/".
+    # Don't match plain "claude/" since the CLI's UA also contains it.
+    is_electron    = "electron" in ua
     is_vscode      = ("vscode" in ctx) or ("vscode" in ua) or ("visual-studio-code" in ua) \
                      or ("vscode" in name)
 
@@ -369,18 +370,18 @@ class ClaudeAPIMonitor:
         prompt   = _extract_prompt_api(messages)
         client   = _detect_client(flow.request.headers)
 
-        # Body-based detection — more reliable than headers when subprocesses
-        # (Cowork worker, Desktop Code worker) drop the Electron UA.
-        #   - Cowork tools (mcp__cowork__*)        → claude-desktop-cowork
-        #   - Code tools (Bash/Read/Write/...) and the URL has the desktop
-        #     beta flag → it's the Desktop "Code" tab, not standalone CLI.
-        has_beta_flag = "beta=true" in flow.request.path
+        # Body-based detection only refines when headers are ambiguous.
+        #   - Cowork tools (mcp__cowork__*) → claude-desktop-cowork (always wins,
+        #     reliable because the marker is unique to Cowork).
+        #   - Code-style tools without any header signal → fallback to
+        #     claude-code-cli. CLI and Desktop "Code" tab share the same tools
+        #     and beta=true URL, so we cannot reliably distinguish them by
+        #     body alone — let _detect_client's header logic decide between
+        #     claude-desktop-code / claude-code-vscode / claude-code-cli.
         if _looks_like_cowork(req, flow.request.headers):
             client = "claude-desktop-cowork"
-        elif _looks_like_code(req):
-            # Keep header-based result if it already pinpointed a Code variant.
-            if client not in ("claude-desktop-code", "claude-code-vscode", "claude-code-cli"):
-                client = "claude-desktop-code" if has_beta_flag else "claude-code-cli"
+        elif _looks_like_code(req) and client == "api":
+            client = "claude-code-cli"
 
         resp_text = flow.response.content.decode("utf-8", errors="replace")
         ct        = flow.response.headers.get("content-type", "")
