@@ -30,6 +30,27 @@ try:
 except ImportError:
     raise SystemExit("config.py not found — copy config.example.py → config.py and fill in values.")
 
+# ── Email filter ─────────────────────────────────────────────────────────────
+# When enabled, only log calls whose detected account_email contains
+# EMAIL_FILTER_SUBSTRING (case-insensitive). Calls with no detected email
+# (e.g. raw API key users) are dropped while the filter is on.
+# Toggle: set EMAIL_FILTER_ENABLED = False to log everything.
+EMAIL_FILTER_ENABLED   = False
+EMAIL_FILTER_SUBSTRING = "@softdebut"
+
+def _should_log(email: str) -> bool:
+    if not EMAIL_FILTER_ENABLED:
+        return True
+    if not EMAIL_FILTER_SUBSTRING:
+        return True
+    return EMAIL_FILTER_SUBSTRING.lower() in (email or "").lower()
+
+if EMAIL_FILTER_ENABLED:
+    print(f"[claude-monitor] email filter ON — only logging accounts containing "
+          f"'{EMAIL_FILTER_SUBSTRING}'")
+else:
+    print("[claude-monitor] email filter OFF — logging all accounts")
+
 # Account info cache — auto-populated by ClaudeAccountSniffer from claude.ai API responses.
 # If no email is detected (e.g., API key users), account_email stays empty.
 _ACCOUNT = {
@@ -98,6 +119,34 @@ def _looks_like_cowork(req: dict, headers) -> bool:
     return False
 
 
+# ── Code heuristic: Claude Code's classic native tools, no cowork markers ────
+# Claude Desktop's "Code" tab and standalone Claude Code CLI both expose the
+# same tool palette. The subprocess that issues the API call may strip the
+# Electron UA, leaving headers ambiguous — body-side detection is more reliable.
+_CODE_TOOLS = {
+    "Bash", "Read", "Write", "Edit", "MultiEdit", "NotebookEdit",
+    "Glob", "Grep", "Task", "TodoWrite", "WebFetch", "WebSearch",
+    "ExitPlanMode", "BashOutput", "KillBash",
+}
+
+def _looks_like_code(req: dict) -> bool:
+    try:
+        tools = req.get("tools") or []
+        if not isinstance(tools, list):
+            return False
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+            name = tool.get("name") or ""
+            if name.lower().startswith("mcp__cowork"):
+                return False  # cowork present — not pure Code
+            if name in _CODE_TOOLS:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 # ── Client detection ──────────────────────────────────────────────────────────
 def _detect_client(headers) -> str:
     ua   = str(headers.get("user-agent",            "")).lower()
@@ -105,16 +154,25 @@ def _detect_client(headers) -> str:
     app  = str(headers.get("x-app",                 "")).lower()
     ctx  = str(headers.get("x-client-context",      "")).lower()
 
-    if "claude-code" in name or "claude-code" in ua or "claude-code" in app:
-        # VSCode extension injects x-client-context: vscode, or shows electron/vscode in UA
-        if "vscode" in ctx or "vscode" in ua or "visual-studio-code" in ua:
+    is_claude_code = ("claude-code" in name or "claude-code" in ua or "claude-code" in app)
+    # Claude Desktop ships as an Electron app with UA like "Claude/x.y Electron/..."
+    is_electron    = ("electron" in ua) or ("claude/" in ua)
+    is_vscode      = ("vscode" in ctx) or ("vscode" in ua) or ("visual-studio-code" in ua) \
+                     or ("vscode" in name)
+
+    if is_claude_code:
+        # Claude Code can run standalone (CLI), as a VSCode extension, or
+        # embedded inside Claude Desktop's "Code" tab.
+        if is_electron and not is_vscode:
+            return "claude-desktop-code"
+        if is_vscode:
             return "claude-code-vscode"
         return "claude-code-cli"
 
-    if "vscode" in ua or "vscode" in name or "vscode" in ctx:
+    if is_vscode:
         return "claude-code-vscode"
 
-    if "electron" in ua or "claude" in ua or "anthropic" in ua:
+    if is_electron or "anthropic" in ua:
         return "claude-desktop"
 
     return "api"
@@ -311,12 +369,18 @@ class ClaudeAPIMonitor:
         prompt   = _extract_prompt_api(messages)
         client   = _detect_client(flow.request.headers)
 
-        # Cowork = Desktop hitting /v1/messages?beta=true with cowork tools / metadata.
-        # Regular Desktop chat goes through claude.ai/.../chat_conversations, never here.
-        if client == "claude-desktop":
+        # Body-based detection — more reliable than headers when subprocesses
+        # (Cowork worker, Desktop Code worker) drop the Electron UA.
+        #   - Cowork tools (mcp__cowork__*)        → claude-desktop-cowork
+        #   - Code tools (Bash/Read/Write/...) and the URL has the desktop
+        #     beta flag → it's the Desktop "Code" tab, not standalone CLI.
+        has_beta_flag = "beta=true" in flow.request.path
+        if _looks_like_cowork(req, flow.request.headers):
             client = "claude-desktop-cowork"
-        elif client == "api" and _looks_like_cowork(req, flow.request.headers):
-            client = "claude-desktop-cowork"
+        elif _looks_like_code(req):
+            # Keep header-based result if it already pinpointed a Code variant.
+            if client not in ("claude-desktop-code", "claude-code-vscode", "claude-code-cli"):
+                client = "claude-desktop-code" if has_beta_flag else "claude-code-cli"
 
         resp_text = flow.response.content.decode("utf-8", errors="replace")
         ct        = flow.response.headers.get("content-type", "")
@@ -350,11 +414,16 @@ class ClaudeAPIMonitor:
         cr  = parsed.get("cache_read_tokens", 0)
         cw  = parsed.get("cache_creation_tokens", 0)
 
+        email = current_email()
+        if not _should_log(email):
+            print(f"[claude-api] SKIP (filter) | {client} | {model} | email={email or '(none)'}")
+            return
+
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                client,
-            "account_email":         current_email(),
+            "account_email":         email,
             "machine_name":          HOSTNAME,
             "model":                 model,
             "prompt":                prompt,
@@ -437,11 +506,16 @@ class ClaudeDesktopMonitor:
         cr  = parsed.get("cache_read_tokens", 0)
         cw  = parsed.get("cache_creation_tokens", 0)
 
+        email = current_email()
+        if not _should_log(email):
+            print(f"[claude-desktop] SKIP (filter) | {model} | email={email or '(none)'}")
+            return
+
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                "claude-desktop",
-            "account_email":         current_email(),
+            "account_email":         email,
             "machine_name":          HOSTNAME,
             "model":                 model,
             "prompt":                prompt,
@@ -777,11 +851,16 @@ class ClaudeBridgeMonitor:
         inp, out = req["inp"], req["out"]
         cr, cw   = req["cr"],  req["cw"]
 
+        email = current_email()
+        if not _should_log(email):
+            print(f"[claude-bridge] SKIP (filter) | {sess['client']} | {model} | email={email or '(none)'}")
+            return
+
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                sess["client"],
-            "account_email":         current_email(),
+            "account_email":         email,
             "machine_name":          HOSTNAME,
             "model":                 model,
             "prompt":                prompt,
