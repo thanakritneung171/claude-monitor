@@ -19,10 +19,9 @@ EXPOSE 8080
 # Set PYTHONUNBUFFERED to see logs in real-time
 ENV PYTHONUNBUFFERED=1
 
-CMD ["mitmproxy", \
+CMD ["mitmdump", \
      "--mode", "regular", \
      "--listen-host", "0.0.0.0", \
      "--listen-port", "8080", \
      "-s", "addon.py", \
-     "--keep-host-header", \
      "-v"]
