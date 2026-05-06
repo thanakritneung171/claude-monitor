@@ -1,187 +1,199 @@
-# Claude Monitor 🔷
+# Claude Monitor
 
-ระบบ monitoring สำหรับจับและติดตามการใช้งาน Claude API จากทุก client (Claude Desktop, Claude.ai web, Cowork, Claude Code CLI/VSCode/Desktop, API SDK) สร้างด้วย mitmproxy + Cloudflare Workers + D1
+ระบบ monitoring สำหรับจับและติดตามการใช้งาน Claude จากทุก client บนเครื่อง Windows สร้างด้วย **mitmproxy + Cloudflare Workers + D1**
 
 ## ทำอะไรได้บ้าง
 
-- **บันทึก log แบบ real-time** — ดักทุก prompt/response ที่ส่งไปหา Claude
-- **คำนวณค่าใช้จ่าย** — ประเมินราคา USD จาก token usage แต่ละครั้ง (รวม cache read/write)
-- **แยกประเภท client** — รู้ว่ามาจาก Cowork, Code, Chat, CLI, VSCode หรือ API
-- **ตรวจ email อัตโนมัติ** — sniff `current_account` ของ claude.ai เพื่อ tag ผู้ใช้
-- **กรอง email ได้** — เปิด/ปิดด้วย boolean ตั้ง substring ที่ต้องตรงเพื่อบันทึก
-- **Dashboard บนเว็บ** — สรุปยอด calls / cost / token แบบ real-time
-- **Local backup** — เก็บ JSONL ในเครื่องทุก call (เผื่อ Worker ล่ม)
+- บันทึก prompt / response / token usage แบบ real-time จากทุก client
+- คำนวณค่าใช้จ่าย USD จาก token usage (รวม cache read/write)
+- แยกประเภท client อัตโนมัติ (Claude Code CLI, VSCode, Desktop, Cowork, API SDK)
+- ตรวจจับ email ของผู้ใช้อัตโนมัติจาก claude.ai session
+- กรอง log ตาม email (เปิด/ปิดได้)
+- Dashboard บนเว็บ (Cloudflare Worker) สรุป calls / cost / token
+- Local backup เป็น JSONL ทุกวัน (เผื่อ Worker ล่ม)
 
-## ผลิตภัณฑ์ Claude ที่ครอบคลุม
+## Clients ที่รองรับ
 
-| Source | ทาง | Client tag |
+| Client | Protocol | Tag |
 |---|---|---|
-| Claude Code CLI (API key) | `api.anthropic.com/v1/messages` | `claude-code-cli` |
-| Claude Code CLI (OAuth) | `bridge.claudeusercontent.com` WebSocket | `claude-code-cli` |
-| Claude Code VSCode | `api.anthropic.com/v1/messages` | `claude-code-vscode` |
-| Claude Desktop chat | `claude.ai/.../chat_conversations/.../completion` | `claude-desktop` |
-| Claude.ai web chat | เหมือน Desktop chat | `claude-desktop` |
-| **Cowork** (Desktop) | `api.anthropic.com/v1/messages?beta=true` | `claude-desktop-cowork` |
-| **Code tab** (Desktop) | `api.anthropic.com/v1/messages?beta=true` | `claude-desktop-code` |
-| Claude API SDK ใดก็ตาม | `api.anthropic.com/v1/messages` | `api` |
-| Chrome Extension via bridge | `bridge.claudeusercontent.com` WS | `browser-extension` |
+| Claude Code CLI (API key) | REST `api.anthropic.com` | `claude-code-cli` |
+| Claude Code CLI (OAuth) | WebSocket `bridge.claudeusercontent.com` | `claude-code-cli` |
+| Claude Code VSCode | REST `api.anthropic.com` | `claude-code-vscode` |
+| Claude Desktop (chat) | SSE `claude.ai/.../completion` | `claude-desktop` |
+| Claude.ai web | SSE `claude.ai/.../completion` | `claude-desktop` |
+| Cowork (Desktop) | REST `api.anthropic.com?beta=true` | `claude-desktop-cowork` |
+| Code tab (Desktop) | REST `api.anthropic.com?beta=true` | `claude-desktop-code` |
+| API SDK | REST `api.anthropic.com` | `api` |
+| Chrome Extension via bridge | WebSocket `bridge.claudeusercontent.com` | `browser-extension` |
 
-## สถาปัตยกรรมระบบ
+## สถาปัตยกรรม
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                    │
-│  Claude clients (Desktop, Cowork, Code, CLI, VSCode, API)        │
-│         │                                                          │
-│         ▼  HTTPS_PROXY=127.0.0.1:8080                            │
-│  ┌──────────────────────────────────────┐                        │
-│  │  mitmproxy + addon.py                │                        │
-│  │                                       │                        │
-│  │  • ClaudeAccountSniffer  (อ่าน email)│                        │
-│  │  • ClaudeAPIMonitor                  │                        │
-│  │  • ClaudeDesktopMonitor              │                        │
-│  │  • ClaudeBridgeMonitor               │                        │
-│  │  • ClaudeConnectionLogger (SNI)      │                        │
-│  │  • Discovery addons (debug)          │                        │
-│  │                                       │                        │
-│  │  → ตรวจ client + Cowork/Code/Cowork  │                        │
-│  │  → ดึง prompt (ข้าม system-reminder) │                        │
-│  │  → อ่าน token + คำนวณราคา           │                        │
-│  │  → กรอง email (optional)             │                        │
-│  └────────┬─────────────────────────────┘                        │
-│           │                                                        │
-│       ┌───┴────────────────────────────┐                         │
-│       ▼                                ▼                         │
-│   JSONL ในเครื่อง            Cloudflare Worker                  │
-│   (log/claude_*.jsonl)       (POST /log)                        │
-│                                    │                             │
-│                                    ▼                             │
-│                            Cloudflare D1                         │
-│                                    │                             │
-│                                    ▼                             │
-│                            Dashboard (HTML)                      │
-└──────────────────────────────────────────────────────────────────┘
+Claude clients (Desktop / Code / CLI / VSCode / API)
+        │
+        ▼  HTTPS_PROXY=127.0.0.1:8080
+┌─────────────────────────────────────────┐
+│  mitmproxy + proxy/addon.py             │
+│                                         │
+│  ClaudeAccountSniffer   — อ่าน email    │
+│  ClaudeAPIMonitor       — REST API      │
+│  ClaudeDesktopMonitor   — claude.ai SSE │
+│  ClaudeBridgeMonitor    — WebSocket     │
+│  ClaudeMCPMonitor       — MCP proxy     │
+└────────┬────────────────────────────────┘
+         │
+    ┌────┴──────────────────────┐
+    ▼                           ▼
+log/claude_YYYY-MM-DD.jsonl    Cloudflare Worker POST /log
+(local backup)                          │
+                                        ▼
+                                 Cloudflare D1 (SQL)
+                                        │
+                                        ▼
+                                 Dashboard (GET /)
 ```
 
-## ส่วนประกอบ
+## Prerequisites
 
-### 1. mitmproxy Addon — `proxy/addon.py`
-
-**Monitor classes (เก็บข้อมูล):**
-
-| Class | หน้าที่ |
-|-------|---------|
-| `ClaudeAccountSniffer` | อ่าน email จาก `claude.ai/api/auth/current_account` (ทำงานก่อน — เพื่อให้ email พร้อมเวลา log) |
-| `ClaudeAPIMonitor` | ดัก `api.anthropic.com/v1/messages` (รวม `?beta=true` ของ Cowork/Code) |
-| `ClaudeDesktopMonitor` | ดัก `claude.ai/.../chat_conversations/.../completion` (Chat ปกติ) |
-| `ClaudeBridgeMonitor` | ดัก `bridge.claudeusercontent.com` WebSocket (Claude Code OAuth, Cowork chrome agent) |
-
-**Discovery classes (debug):**
-
-| Class | หน้าที่ |
-|-------|---------|
-| `ClaudeConnectionLogger` | log SNI ของทุก TLS connection (รวม passthrough) → `log/claude_connections.jsonl` |
-| `ClaudeDesktopDiscovery` | log POST ที่ยังไม่มี matcher → `log/claude_desktop_discovery.jsonl` |
-| `ClaudeBridgeDiscovery` | log WS frames ที่ยังไม่รู้จัก → `log/claude_bridge_discovery.jsonl` |
-
-**Helper functions:**
-
-| Function | หน้าที่ |
+| Tool | Version |
 |---|---|
-| `_detect_client(headers)` | ตรวจ client จาก UA + `anthropic-client-name` + `x-app` + `x-client-context` |
-| `_looks_like_cowork(req)` | True ถ้า body มี `mcp__cowork__*` หรือ metadata มีคำว่า cowork |
-| `_looks_like_code(req)` | True ถ้า body มี Bash/Read/Write/Edit/... โดยไม่มี cowork |
-| `_extract_prompt_api(messages)` | ดึง prompt user จริง (ข้าม `<system-reminder>` blocks) |
-| `_extract_prompt_desktop(req)` | ดึง prompt จาก request body หลายฟอร์แมตของ claude.ai |
-| `_parse_sse_api(text)` | แปลง SSE → text + token counts |
-| `_parse_sse_desktop(text)` | แปลง SSE ของ claude.ai (รองรับ format เก่า/ใหม่) |
-| `_calc_cost(...)` | คำนวณ USD จาก model + tokens |
-| `_should_log(email)` | True ถ้าผ่าน email filter |
-| `_send_log(payload)` | ส่ง POST ไป Worker (bypass system proxy ป้องกัน loopback) |
-| `_write_local(payload)` | เขียน JSONL วันนั้น |
+| Python | 3.10+ |
+| mitmproxy | 10.0+ |
+| Node.js | 18+ |
+| Wrangler CLI | 3+ |
+| Cloudflare account | (free tier ได้) |
 
-**Email filter (option):**
+## การติดตั้ง
 
-```python
-EMAIL_FILTER_ENABLED   = True       # toggle on/off
-EMAIL_FILTER_SUBSTRING = "@softdebut"  # case-insensitive substring match
+### 1. Clone repo และติดตั้ง dependencies
+
+```bash
+git clone <repo-url>
+cd claude-monitor
+pip install -r proxy/requirements.txt
 ```
 
-เมื่อเปิด — เฉพาะ call ที่ `account_email` มี substring นี้ถึงจะถูกบันทึก/ส่ง
+### 2. Deploy Cloudflare Worker
 
-**Pricing (USD / 1M tokens):**
+```bash
+cd worker
+npm install
+npm run deploy
+```
 
-| Model tier | Input | Output | Cache Read | Cache Write |
-|---|---|---|---|---|
-| Opus | $15 | $75 | $1.50 | $18.75 |
-| Sonnet | $3 | $15 | $0.30 | $3.75 |
-| Haiku | $0.80 | $4 | $0.08 | $1.00 |
+Worker URL จะออกมาเป็น `https://claude-monitor-hooks.<yourname>.workers.dev`
 
-### 2. Config — `proxy/config.py`
+### 3. สร้าง D1 database
+
+```bash
+# สร้าง database ใน Cloudflare
+wrangler d1 create prompt-logger
+
+# อัปเดต database_id ใน worker/wrangler.jsonc แล้วรัน schema
+npm run db:init
+```
+
+### 4. ตั้ง API key บน Worker
+
+```bash
+wrangler secret put API_KEY
+# พิมพ์ key ที่ต้องการ เช่น  my-secret-key-123
+```
+
+### 5. สร้าง config ของ proxy
+
+```bash
+cp proxy/config.example.py proxy/config.py
+```
+
+แก้ไข `proxy/config.py`:
 
 ```python
-WORKER_URL = "https://your-worker.workers.dev"
-API_KEY    = "your-secret"
+WORKER_URL = "https://claude-monitor-hooks.<yourname>.workers.dev"
+API_KEY    = "my-secret-key-123"   # ตรงกับที่ตั้งใน step 4
 PROXY_PORT = 8080
 ```
 
-### 3. Cloudflare Worker — `worker/src/index.ts`
+### 6. ติดตั้ง CA cert (ครั้งแรกครั้งเดียว)
 
-| Endpoint | Method | หน้าที่ |
-|---|---|---|
-| `/log` | POST | รับ log (ตรวจ `X-Api-Key` ก่อน) |
-| `/health` | GET | health check |
-| `/` | GET | Dashboard HTML |
+```powershell
+# รัน mitmproxy ครั้งแรกเพื่อ generate cert
+.\proxy\start.ps1
+# Ctrl+C หลังเห็น "Proxy server listening"
 
-**D1 schema:**
-
-```sql
-CREATE TABLE api_logs (
-  id                    TEXT PRIMARY KEY,
-  ts                    INTEGER,       -- ms epoch
-  client                TEXT,          -- claude-desktop-cowork, claude-code-cli, ฯลฯ
-  account_email         TEXT,
-  machine_name          TEXT,
-  model                 TEXT,
-  prompt                TEXT,
-  prompt_chars          INTEGER,
-  response_chars        INTEGER,
-  input_tokens          INTEGER,
-  output_tokens         INTEGER,
-  cache_creation_tokens INTEGER,
-  cache_read_tokens     INTEGER,
-  total_tokens          INTEGER,
-  cost_usd              REAL
-);
+# จากนั้น install cert (ต้องเป็น Administrator)
+.\proxy\install-cert.ps1
 ```
 
-**Dashboard sections:**
+### 7. เปิดใช้งาน proxy
 
-- KPI cards (calls / total tokens / cost รวม)
-- By Model / By Client / By Account / By Machine
-- Recent 100 calls พร้อม prompt preview
+```powershell
+# ตั้ง system proxy + Claude Code env vars (persistent)
+.\proxy\enable-proxy.ps1
 
-### 4. Local logs — `log/`
-
-```
-log/
-├── claude_2026-05-06.jsonl              # log รายวัน 1 บรรทัด = 1 call
-├── claude_connections.jsonl             # SNI ของทุก connection (debug)
-├── claude_desktop_discovery.jsonl       # POST ที่ยังไม่มี matcher
-└── claude_bridge_discovery.jsonl        # WS frames ที่ยังไม่รู้จัก
+# Restart Claude Desktop / VSCode หลังรันสคริปต์นี้
 ```
 
-## ข้อมูลในแต่ละ entry
+### 8. เริ่ม monitor
+
+```powershell
+.\proxy\start.ps1
+```
+
+เปิด Dashboard ได้ที่ `https://claude-monitor-hooks.<yourname>.workers.dev`
+
+---
+
+## Email Filter
+
+แก้ใน `proxy/config.py` (หรือ addon.py โดยตรง):
+
+```python
+EMAIL_FILTER_ENABLED   = True          # True = กรอง, False = log ทุก account
+EMAIL_FILTER_SUBSTRING = "@yourcompany" # case-insensitive substring match
+```
+
+เมื่อเปิด — เฉพาะ call ที่ email ผู้ใช้มี substring นี้จะถูกบันทึก
+
+---
+
+## โครงสร้างไฟล์
+
+```
+claude-monitor/
+├── proxy/
+│   ├── addon.py            # mitmproxy addon หลัก
+│   ├── config.example.py   # template config
+│   ├── config.py           # config จริง (gitignored)
+│   ├── requirements.txt
+│   ├── start.ps1           # เริ่ม proxy
+│   ├── enable-proxy.ps1    # เปิด system proxy
+│   ├── disable-proxy.ps1   # ปิด system proxy
+│   └── install-cert.ps1    # ติดตั้ง CA cert
+├── worker/
+│   ├── src/index.ts        # Cloudflare Worker
+│   ├── schema.sql          # D1 schema
+│   └── wrangler.jsonc
+└── log/
+    ├── claude_YYYY-MM-DD.jsonl       # log รายวัน
+    ├── claude_connections.jsonl       # SNI debug
+    ├── claude_desktop_discovery.jsonl # endpoint debug
+    └── claude_bridge_discovery.jsonl  # WebSocket debug
+```
+
+---
+
+## Log Entry Format
 
 ```json
 {
   "id": "uuid",
   "ts": 1777993204233,
   "client": "claude-desktop-cowork",
-  "account_email": "user@softdebut.com",
+  "account_email": "user@company.com",
   "machine_name": "MY-PC",
   "model": "claude-sonnet-4-6",
-  "prompt": "ข้อความที่ผู้ใช้พิมพ์จริง",
+  "prompt": "ข้อความที่ผู้ใช้พิมพ์",
   "prompt_chars": 17,
   "response_chars": 59,
   "input_tokens": 3,
@@ -193,40 +205,37 @@ log/
 }
 ```
 
-## วิธีตรวจจับ Client
+## Pricing (USD / 1M tokens)
 
-ตรวจตามลำดับ:
-
-1. **Headers** — `_detect_client()` อ่าน UA / anthropic-client-name / x-app / x-client-context
-   - `claude-code` + `electron` → `claude-desktop-code`
-   - `claude-code` + `vscode` → `claude-code-vscode`
-   - `claude-code` เพียวๆ → `claude-code-cli`
-   - `vscode` → `claude-code-vscode`
-   - `electron` หรือ `anthropic` ใน UA → `claude-desktop`
-   - อื่นๆ → `api`
-
-2. **Body override** (ใน `ClaudeAPIMonitor`)
-   - ถ้า body มี `mcp__cowork__*` → `claude-desktop-cowork`
-   - ถ้า body มี Code tools (Bash/Read/Write/...) AND header detect ไม่ได้ → `claude-code-cli` (fallback)
-
-## วิธีตรวจจับ Email
-
-`ClaudeAccountSniffer` อ่าน response ของ endpoint **whitelist เท่านั้น** (เพื่อไม่ปนกับ org member list / support emails):
-
-- `/api/auth/current_account`
-- `/api/account`
-- `/api/bootstrap/...` และ `/edge-api/bootstrap/...`
-
-## ข้อจำกัดที่รู้
-
-- **Mobile apps** → คนละเครื่อง ต้อง MITM ที่ network layer (router)
-- **HTTP/3 (QUIC)** → mitmproxy ดักได้แค่ TCP — ปัจจุบันไม่ปัญหา แต่ระวังในอนาคต
-- **Subprocess ของ Cowork/Code** → bypass system proxy โดย default — แก้โดยใช้ `install-claude-proxy.ps1` ตั้ง persistent user env vars
-- **Desktop Code subprocess strip header** → อาจถูก tag ปนกับ `claude-code-cli` แทน `claude-desktop-code`
+| Model | Input | Output | Cache Read | Cache Write |
+|---|---|---|---|---|
+| Opus | $15 | $75 | $1.50 | $18.75 |
+| Sonnet | $3 | $15 | $0.30 | $3.75 |
+| Haiku | $0.80 | $4 | $0.08 | $1.00 |
 
 ---
 
-ดูคู่มือติดตั้ง: [SETUP.md](SETUP.md)
-ดูคู่มือนักพัฒนา: [DEVELOPER.md](DEVELOPER.md)
+## Worker API
 
-**สถานะ:** ✅ ใช้งานได้กับทุก channel หลักของ Claude บน Windows desktop / CLI / VSCode / browser-with-proxy
+| Endpoint | Method | หน้าที่ |
+|---|---|---|
+| `/log` | POST | รับ log entry (ต้องส่ง `X-Api-Key` header) |
+| `/health` | GET | health check |
+| `/` | GET | Dashboard HTML |
+
+---
+
+## ข้อจำกัดที่รู้
+
+- **Mobile apps** — ต้องทำ MITM ที่ระดับ router เพราะคนละเครื่อง
+- **HTTP/3 (QUIC)** — mitmproxy ดักได้แค่ TCP; ตอนนี้ไม่มีปัญหา แต่อาจเปลี่ยนได้ในอนาคต
+- **Desktop Code subprocess** — อาจ strip header ทำให้ tag เป็น `claude-code-cli` แทน `claude-desktop-code`
+
+## ปิด proxy
+
+```powershell
+# หยุด mitmproxy: Ctrl+C ใน terminal ที่รัน start.ps1
+
+# ถอด system proxy
+.\proxy\disable-proxy.ps1
+```
