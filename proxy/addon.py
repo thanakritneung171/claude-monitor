@@ -998,6 +998,45 @@ class ClaudeConnectionLogger:
         print(f"[claude-conn] SNI seen: {sni}")
 
 
+# ── mitmproxy addon: mcp-proxy.anthropic.com ─────────────────────────────────
+class ClaudeMCPMonitor:
+    """Intercepts mcp-proxy.anthropic.com (MCP tool calls from Desktop/Cowork)."""
+
+    def request(self, flow: http.HTTPFlow):
+        if flow.request.host != "mcp-proxy.anthropic.com":
+            return
+
+        # Extract MCP method from request body
+        try:
+            body = flow.request.get_text()
+            req_data = json.loads(body) if body else {}
+            mcp_method = req_data.get("method", "unknown")
+        except:
+            mcp_method = "unknown"
+
+        # Log as MCP tool call
+        payload = {
+            "id": str(uuid.uuid4()),
+            "ts": int(__import__('time').time() * 1000),
+            "client": "claude-desktop-mcp",
+            "account_email": current_email(),
+            "machine_name": HOSTNAME,
+            "model": "mcp-" + mcp_method,
+            "prompt": mcp_method,
+            "prompt_chars": 0,
+            "response_chars": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+            "total_tokens": 0,
+            "cost_usd": 0,
+        }
+
+        _write_local(payload)
+        _send_log(payload)
+
+
 addons = [
     ClaudeConnectionLogger(),   # log all hosts client connects to (incl. passthrough)
     ClaudeAccountSniffer(),     # detect email first so completions know it
@@ -1006,4 +1045,5 @@ addons = [
     ClaudeDesktopDiscovery(),   # log other claude.ai POSTs for debugging
     ClaudeBridgeMonitor(),      # bridge.claudeusercontent.com — Claude Code OAuth sessions
     ClaudeBridgeDiscovery(),    # log unknown bridge WS frames for debugging
+    ClaudeMCPMonitor(),         # mcp-proxy.anthropic.com (MCP tool calls)
 ]
