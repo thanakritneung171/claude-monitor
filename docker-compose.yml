@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  mitmproxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-monitor-proxy
+    ports:
+      # ⚠️ สำหรับ production ให้เปลี่ยนเป็น 127.0.0.1:8080:8080
+      - "0.0.0.0:8080:8080"
+    volumes:
+      # Persist certificate across restarts
+      - mitmproxy-certs:/root/.mitmproxy
+      # Mount logs locally
+      - ./log:/app/log
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: 1
+      # Config environment variables สำหรับ addon.py
+      WORKER_URL: ${WORKER_URL}
+      API_KEY: ${API_KEY}
+      PROXY_PORT: ${PROXY_PORT}
+    restart: unless-stopped
+    networks:
+      - claude-monitor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mitmproxy-certs:
+    driver: local
+
+networks:
+  claude-monitor:
+    driver: bridge

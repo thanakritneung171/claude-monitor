@@ -34,9 +34,9 @@ except ImportError:
 # When enabled, only log calls whose detected account_email contains
 # EMAIL_FILTER_SUBSTRING (case-insensitive). Calls with no detected email
 # (e.g. raw API key users) are dropped while the filter is on.
-# Toggle: set EMAIL_FILTER_ENABLED = False to log everything.
-EMAIL_FILTER_ENABLED   = False
-EMAIL_FILTER_SUBSTRING = "@softdebut"
+# Configure in config.py or via environment variables
+EMAIL_FILTER_ENABLED   = config.EMAIL_FILTER_ENABLED
+EMAIL_FILTER_SUBSTRING = config.EMAIL_FILTER_SUBSTRING
 
 def _should_log(email: str) -> bool:
     if not EMAIL_FILTER_ENABLED:
