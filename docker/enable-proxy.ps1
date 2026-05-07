@@ -4,7 +4,7 @@
 # To undo: .\docker\disable-proxy.ps1
 
 $proxyUrl = "http://127.0.0.1:8080"
-$noProxy  = "localhost,127.0.0.1,github.com,gitlab.com,bitbucket.org"
+$noProxy = "localhost,127.0.0.1,github.com,gitlab.com,bitbucket.org,*.dingtalk.com"
 $caCert   = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 
 if (-not (Test-Path $caCert)) {
