@@ -348,6 +348,82 @@ _COMPLETION_RE = re.compile(
 )
 
 
+# ── Tool schema fixer ────────────────────────────────────────────────────────
+# Anthropic's /v1/messages rejects tool input_schema that has oneOf/allOf/anyOf
+# at the top level. Some claude.ai connectors (Notion, Google Drive, etc.) ship
+# such schemas, so the request 400s before reaching the model. This hook
+# detects offending tools in the outbound body and flattens the schema to a
+# permissive object so the request goes through. Tools rewritten this way may
+# accept inputs the original schema would have rejected, but the chat works.
+_BAD_KEYS = ("oneOf", "allOf", "anyOf")
+_FIX_LOG  = LOG_DIR / "schema_fixes.jsonl"
+
+
+def _has_top_level_union(schema) -> bool:
+    return isinstance(schema, dict) and any(k in schema for k in _BAD_KEYS)
+
+
+def _flatten_schema(schema: dict) -> dict:
+    """Replace top-level union with a permissive object, preserve description."""
+    new = {"type": "object", "additionalProperties": True}
+    if isinstance(schema.get("description"), str):
+        new["description"] = schema["description"]
+    return new
+
+
+class ToolSchemaFixer:
+    """Rewrites tool schemas in /v1/messages requests to satisfy Anthropic's API."""
+
+    def request(self, flow: http.HTTPFlow):
+        if flow.request.host   != "api.anthropic.com": return
+        path = flow.request.path.split("?", 1)[0]
+        if path != "/v1/messages":                      return
+        if flow.request.method != "POST":               return
+
+        try:
+            body = json.loads(flow.request.content)
+        except Exception:
+            return
+
+        tools = body.get("tools")
+        if not isinstance(tools, list):
+            return
+
+        fixed_names = []
+        for idx, tool in enumerate(tools):
+            if not isinstance(tool, dict):
+                continue
+
+            # Anthropic's tool shape can be either {name, input_schema, ...}
+            # or {type:"custom", name, custom:{input_schema, ...}}.
+            # The 400 error path "tools.N.custom.input_schema" indicates the
+            # second shape, but we handle both.
+            if isinstance(tool.get("custom"), dict):
+                holder = tool["custom"]
+            else:
+                holder = tool
+
+            schema = holder.get("input_schema")
+            if not _has_top_level_union(schema):
+                continue
+
+            holder["input_schema"] = _flatten_schema(schema)
+            fixed_names.append((idx, tool.get("name") or holder.get("name") or "?"))
+
+        if fixed_names:
+            flow.request.content = json.dumps(body).encode("utf-8")
+            try:
+                with open(_FIX_LOG, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "ts":    int(datetime.now().timestamp() * 1000),
+                        "fixed": [{"idx": i, "name": n} for i, n in fixed_names],
+                    }, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
+            print(f"[claude-monitor] fixed bad schema on tools: "
+                  f"{', '.join(f'{i}={n}' for i, n in fixed_names)}")
+
+
 # ── mitmproxy addon: api.anthropic.com ───────────────────────────────────────
 class ClaudeAPIMonitor:
     """Intercepts api.anthropic.com/v1/messages (API key users)."""
@@ -1000,6 +1076,7 @@ class ClaudeConnectionLogger:
 
 addons = [
     ClaudeConnectionLogger(),   # log all hosts client connects to (incl. passthrough)
+    ToolSchemaFixer(),          # rewrite tool input_schema with top-level oneOf/allOf/anyOf
     ClaudeAccountSniffer(),     # detect email first so completions know it
     ClaudeAPIMonitor(),         # api.anthropic.com (API key / Claude Code CLI & VSCode)
     ClaudeDesktopMonitor(),     # claude.ai chat completion (Desktop app / browser)
