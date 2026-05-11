@@ -16,6 +16,7 @@
 4. [Setting Server](#4-setting-server)
 5. [Setting Client](#5-setting-client)
 6. [Result](#6-result)
+   - [6.6 จุดที่ "ยิง API" ไปเก็บ log ที่ Worker](#66-จุดที่-ยิง-api-ไปเก็บ-log-ที่-worker-code-map)
 7. [Demo](#7-demo)
 
 ---
@@ -476,6 +477,78 @@ Get-NetTCPConnection -State Established |
 2. POST `{WORKER_URL}/log` พร้อม header `X-Api-Key: {API_KEY}` ใน thread แยก (fire-and-forget)
 
 ถ้า Worker ล่ม / network หลุด → proxy ยังบันทึก local ปกติ ไม่ block client
+
+### 6.6 จุดที่ "ยิง API" ไปเก็บ log ที่ Worker (code map)
+
+หัวใจของการส่ง log ขึ้น Worker คือฟังก์ชัน `_send_log` ใน [proxy/addon.py](addon.py) — เปิด socket ตัวเองที่ **bypass system proxy** (เพื่อกัน loopback กลับเข้า mitmproxy เอง) แล้ว POST JSON เข้า `{WORKER_URL}/log`
+
+**ฟังก์ชัน `_send_log`** — [proxy/addon.py:320-342](addon.py#L320-L342)
+
+```python
+# Build ONE opener that bypasses system proxy (avoid loopback through mitmproxy)
+_no_proxy_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+def _send_log(payload: dict):
+    """Send log to Cloudflare Worker — bypasses system proxy to avoid loopback."""
+    try:
+        body = json.dumps(payload).encode()
+        req  = urllib.request.Request(f"{WORKER_URL}/log", data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("X-Api-Key",    API_KEY)
+        req.add_header("User-Agent",   "Mozilla/5.0 (claude-monitor mitmproxy addon)")
+        resp = _no_proxy_opener.open(req, timeout=8)
+        status = resp.getcode()
+        if status != 200:
+            print(f"[claude-monitor] WARN worker returned {status}")
+    except Exception as e:
+        print(f"[claude-monitor] ERROR sending to worker: {type(e).__name__}: {e}")
+```
+
+จุดสำคัญในฟังก์ชัน:
+
+| Line | สิ่งที่ทำ | เหตุผล |
+|---|---|---|
+| `_no_proxy_opener = ...ProxyHandler({})` | สร้าง opener ที่ ignore `HTTPS_PROXY` env | ถ้าใช้ default urllib → request จะวิ่งกลับเข้า mitmproxy เอง (loopback infinite) |
+| `f"{WORKER_URL}/log"` | endpoint ที่ Worker รับ | match กับ Worker route [worker/src/index.ts:256](../worker/src/index.ts#L256) |
+| `X-Api-Key: {API_KEY}` | bearer auth | Worker จะ reject ถ้าไม่ตรงกับ `wrangler secret put API_KEY` |
+| User-Agent ปลอม | กัน Cloudflare block | default `Python-urllib/3.x` UA จะโดน Cloudflare WAF บล็อกบางที |
+| `timeout=8` | hard timeout 8 วินาที | กัน thread ค้างถ้า Worker hang |
+| `try/except Exception` | swallow ทุก error | fire-and-forget — Worker ล่มห้ามกระทบ proxy main flow |
+
+**จุดที่เรียก `_send_log`** — 3 ที่ใน addon.py (1 ที่ต่อ monitor class):
+
+| Monitor class | บรรทัดที่เรียก | endpoint ที่ดักได้ |
+|---|---|---|
+| `ClaudeAPIMonitor.response` | [addon.py:518](addon.py#L518) | `api.anthropic.com/v1/messages` (รวม `?beta=true`) — CLI / VSCode / Desktop-Code / Desktop-Cowork |
+| `ClaudeDesktopMonitor.response` | [addon.py:610](addon.py#L610) | `claude.ai/.../chat_conversations/.../completion` — Desktop Chat / claude.ai web |
+| `ClaudeBridgeMonitor.websocket_message` | [addon.py:955](addon.py#L955) | `bridge.claudeusercontent.com` WebSocket — Claude Code (OAuth) / browser extension |
+
+ทั้ง 3 จุดเรียกแบบเดียวกัน — ทำ local write ก่อนแล้วค่อย spawn thread ส่งขึ้น Worker:
+
+```python
+_write_local(log)                                                    # sync — ห้ามพลาด
+threading.Thread(target=_send_log, args=(log,), daemon=True).start() # async fire-and-forget
+```
+
+**ลำดับการทำงานเต็ม (จาก call เข้ามาจนถึง Worker ได้รับ):**
+
+```
+client request
+    └─> mitmdump intercept
+        └─> response hook (API/Desktop/Bridge Monitor)
+            ├─> parse SSE → tokens/text
+            ├─> _detect_client(headers) + body heuristic
+            ├─> _calc_cost(model, tokens)
+            ├─> _should_log(email)            ← filter gate
+            ├─> _write_local(log)             ← sync JSONL append
+            └─> Thread(_send_log).start()     ← async POST WORKER_URL/log
+                                                  │
+                                                  └─> Worker /log handler
+                                                        └─> validate X-Api-Key
+                                                            └─> INSERT D1
+```
+
+ดู Worker ฝั่งรับใน [worker/src/index.ts:255-260](../worker/src/index.ts#L255-L260) และ [worker/WORKER-GUIDE.md §2.2](../worker/WORKER-GUIDE.md#22-path-1--post-log-ingest-จาก-proxy)
 
 ---
 
