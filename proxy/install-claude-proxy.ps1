@@ -14,7 +14,7 @@
 # tooling — otherwise requests will fail with ECONNREFUSED.
 # To revert: .\uninstall-claude-proxy.ps1
 
-$proxyUrl     = "http://127.0.0.1:8080"
+$proxyUrl     = "http://10.10.84.1:8081"
 $caCert       = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
 

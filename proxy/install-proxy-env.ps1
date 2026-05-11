@@ -11,7 +11,7 @@
 [CmdletBinding()]
 param([switch]$Uninstall)
 
-$proxyUrl = "http://127.0.0.1:8080"
+$proxyUrl = "http://10.10.84.1:8081"  # was: http://127.0.0.1:8080 (local)
 $caCert   = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 
 $vars = @{

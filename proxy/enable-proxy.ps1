@@ -5,7 +5,7 @@
 # Claude Code CLI:       . .\enable-proxy.ps1  then  claude
 # Claude Code VSCode:    . .\enable-proxy.ps1  then  code .   (launch VSCode from here)
 
-$proxyUrl  = "http://127.0.0.1:8080"
+$proxyUrl  = "http://10.10.84.1:8081"  # was: http://127.0.0.1:8080 (local)
 $caCert    = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 
 if (-not (Test-Path $caCert)) {
@@ -19,6 +19,11 @@ $env:NODE_EXTRA_CA_CERTS = $caCert
 # Tell Python (pip / requests / urllib3) about the cert too
 $env:REQUESTS_CA_BUNDLE  = $caCert
 $env:SSL_CERT_FILE       = $caCert
+
+# Enable Windows System Proxy
+$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 1
+Set-ItemProperty -Path $regPath -Name ProxyServer -Value "$($proxyUrl -replace '^http://','')"
 
 Write-Host ""
 Write-Host "  Proxy ENABLED for this session" -ForegroundColor Green
