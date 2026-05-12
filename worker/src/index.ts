@@ -105,7 +105,7 @@ function preview(text: string, len = 140): string {
 	const t = text.trim().replace(/\s+/g, ' ');
 	const e = esc(t.slice(0, len));
 	if (t.length <= len) return e;
-	return `${e}… <button onclick="showFull(this)" data-full="${esc(t)}" style="background:none;border:none;color:#818cf8;font-size:11px;cursor:pointer;text-decoration:underline;padding:0 0 0 4px">more</button>`;
+	return `${e}… <button onclick="showFull(this)" data-full="${esc(t)}" style="background:none;border:none;color:#ea580c;font-size:11px;cursor:pointer;text-decoration:underline;padding:0 0 0 4px">more</button>`;
 }
 
 function toCsv(rows: ApiLog[]): string {
@@ -253,70 +253,70 @@ function buildDashboard(
 <title>Claude Monitor</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0d1117;color:#c9d1d9;font-size:14px}
-header{background:#161b22;border-bottom:1px solid #30363d;padding:14px 24px;display:flex;align-items:center;gap:10px}
-header h1{font-size:17px;font-weight:700;color:#a78bfa}
-.sub{font-size:12px;color:#484f58;margin-left:auto}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3fb950;animation:pulse 2s infinite}
+body{font-family:system-ui,sans-serif;background:#ffffff;color:#111827;font-size:14px}
+header{background:linear-gradient(135deg,#ea580c 0%,#f97316 100%);padding:14px 24px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(234,88,12,.3)}
+header h1{font-size:17px;font-weight:700;color:#ffffff}
+.sub{font-size:12px;color:#ffffff;margin-left:auto;font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffffff;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 main{padding:20px 24px;max-width:1700px;margin:0 auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:20px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 16px}
-.card .l{font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:#484f58;font-weight:700;margin-bottom:5px}
-.card .v{font-size:24px;font-weight:700;color:#f0f6fc;line-height:1}
+.card{background:#ffffff;border:1px solid #fed7aa;border-radius:8px;padding:14px 16px;box-shadow:0 1px 4px rgba(234,88,12,.08)}
+.card .l{font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:#374151;font-weight:700;margin-bottom:5px}
+.card .v{font-size:24px;font-weight:700;color:#ea580c;line-height:1}
 .four{display:grid;grid-template-columns:1.6fr 1.4fr 1fr 1fr;gap:14px;margin-bottom:20px}
 @media(max-width:1100px){.four{grid-template-columns:1fr 1fr}}
 section{margin-bottom:20px}
-section h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58;margin-bottom:8px}
-table{width:100%;border-collapse:collapse;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
-th{background:#0d1117;padding:7px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#484f58;border-bottom:1px solid #30363d;white-space:nowrap}
-td{padding:7px 12px;border-bottom:1px solid #21262d;vertical-align:top}
+section h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#374151;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #fed7aa;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(234,88,12,.08)}
+th{background:#fff7ed;padding:7px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#7c2d12;border-bottom:1px solid #fed7aa;white-space:nowrap}
+td{padding:8px 12px;border-bottom:1px solid #fff7ed;vertical-align:top;color:#111827;font-size:13px}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#1c2128}
+tr:hover td{background:#fff7ed}
 .r{text-align:right;font-variant-numeric:tabular-nums}
-.b{font-weight:700;color:#f0f6fc}
-.cost{color:#f0883e}
-.cw{color:#a78bfa}
-.cr{color:#3fb950}
-.ts{white-space:nowrap;font-size:12px;color:#484f58;font-family:monospace}
-.pmx{max-width:380px;word-break:break-word;font-size:13px;color:#8b949e}
-#modal{display:none;position:fixed;inset:0;background:#000000aa;z-index:999;align-items:center;justify-content:center}
+.b{font-weight:700;color:#c2410c}
+.cost{color:#c2410c;font-weight:600}
+.cw{color:#6d28d9;font-weight:600}
+.cr{color:#047857;font-weight:600}
+.ts{white-space:nowrap;font-size:12px;color:#374151;font-family:monospace;font-weight:500}
+.pmx{max-width:380px;word-break:break-word;font-size:13px;color:#1f2937}
+#modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center}
 #modal.open{display:flex}
-.mbox{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:22px;max-width:820px;width:92%;box-shadow:0 16px 48px #000a}
+.mbox{background:#ffffff;border:1px solid #fed7aa;border-radius:10px;padding:22px;max-width:820px;width:92%;box-shadow:0 16px 48px rgba(0,0,0,.2)}
 .mhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.mhead h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58}
-.mbody{font-size:13px;line-height:1.75;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;max-height:68vh;overflow-y:auto;background:#0d1117;border-radius:6px;padding:14px;border:1px solid #30363d}
-.cls{background:none;border:none;color:#484f58;font-size:18px;cursor:pointer;padding:0 4px;line-height:1}
-.cls:hover{color:#f0f6fc}
-.filter-bar{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.mhead h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#374151}
+.mbody{font-size:13px;line-height:1.75;color:#111827;white-space:pre-wrap;word-break:break-word;max-height:68vh;overflow-y:auto;background:#fff7ed;border-radius:6px;padding:14px;border:1px solid #fed7aa}
+.cls{background:none;border:none;color:#6b7280;font-size:18px;cursor:pointer;padding:0 4px;line-height:1}
+.cls:hover{color:#111827}
+.filter-bar{background:#ffffff;border:1px solid #fed7aa;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;box-shadow:0 1px 4px rgba(234,88,12,.08)}
 .fg{display:flex;flex-direction:column;gap:4px}
-.fg label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58}
-.fg select,.fg input[type=date]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:5px 8px;font-size:13px;height:30px;cursor:pointer;min-width:120px}
-.fg select:focus,.fg input[type=date]:focus{outline:none;border-color:#a78bfa}
-.fg input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.6)}
-.apply-btn{background:#a78bfa;color:#0d1117;border:none;border-radius:5px;padding:5px 16px;font-size:13px;font-weight:700;cursor:pointer;height:30px;align-self:flex-end}
-.apply-btn:hover{background:#c4b5fd}
-.export-btn{background:none;border:1px solid #3fb950;color:#3fb950;border-radius:5px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;height:30px;align-self:flex-end;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
-.export-btn:hover{background:#3fb95022}
+.fg label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#374151}
+.fg select,.fg input[type=date]{background:#ffffff;border:1px solid #fed7aa;color:#111827;border-radius:5px;padding:5px 8px;font-size:13px;height:30px;cursor:pointer;min-width:120px;font-weight:500}
+.fg select:focus,.fg input[type=date]:focus{outline:none;border-color:#f97316}
+.fg input[type=date]::-webkit-calendar-picker-indicator{filter:none}
+.apply-btn{background:#ea580c;color:#ffffff;border:none;border-radius:5px;padding:5px 16px;font-size:13px;font-weight:700;cursor:pointer;height:30px;align-self:flex-end}
+.apply-btn:hover{background:#c2410c}
+.export-btn{background:none;border:1px solid #059669;color:#047857;border-radius:5px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;height:30px;align-self:flex-end;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.export-btn:hover{background:#05966915}
 .tbl-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .tbl-hdr h2{margin:0}
-.perpage-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:#484f58}
-.perpage-wrap select{background:#161b22;border:1px solid #30363d;color:#c9d1d9;border-radius:4px;padding:2px 6px;font-size:12px;cursor:pointer}
+.perpage-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:#374151;font-weight:500}
+.perpage-wrap select{background:#ffffff;border:1px solid #fed7aa;color:#111827;border-radius:4px;padding:2px 6px;font-size:12px;cursor:pointer}
 .paging{display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px}
-.pg-info{font-size:12px;color:#484f58}
+.pg-info{font-size:12px;color:#374151;font-weight:500}
 .pg-btns{display:flex;gap:4px;align-items:center}
-.pg-btn{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 6px;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-size:12px;text-decoration:none}
-.pg-btn:hover:not(.pg-dis):not(.pg-cur){background:#21262d;border-color:#484f58}
-.pg-cur{background:#a78bfa22;border-color:#a78bfa;color:#a78bfa;font-weight:700}
-.pg-dis{color:#484f58;cursor:default}
-.pg-ell{color:#484f58;font-size:12px;padding:0 2px}
+.pg-btn{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 6px;background:#ffffff;border:1px solid #d1d5db;border-radius:4px;color:#111827;font-size:12px;font-weight:500;text-decoration:none}
+.pg-btn:hover:not(.pg-dis):not(.pg-cur){background:#fff7ed;border-color:#f97316}
+.pg-cur{background:#fff7ed;border-color:#ea580c;color:#c2410c;font-weight:700}
+.pg-dis{color:#9ca3af;cursor:default}
+.pg-ell{color:#6b7280;font-size:12px;padding:0 2px}
 </style>
 </head>
 <body>
 <header>
   <h1>⬡ Claude Monitor</h1>
   <span class="dot"></span>
-  <span style="font-size:12px;color:#484f58">mitmproxy · refresh 15s</span>
+  <span style="font-size:12px;color:#ffffff;font-weight:600">mitmproxy · refresh 15s</span>
   <span class="sub">Asia/Bangkok</span>
 </header>
 <main>
@@ -373,17 +373,17 @@ ${kpis.map(k => `<div class="card"><div class="l">${k.l}</div><div class="v">${k
   <section>
     <h2>By Model</h2>
     <table><thead><tr><th>Model</th><th class="r">Calls</th><th class="r">Tokens</th><th class="r">Cost</th></tr></thead>
-    <tbody>${modelRows || '<tr><td colspan="4" style="color:#484f58;padding:14px">No data</td></tr>'}</tbody></table>
+    <tbody>${modelRows || '<tr><td colspan="4" style="color:#94a3b8;padding:14px">No data</td></tr>'}</tbody></table>
   </section>
   <section>
     <h2>By Account</h2>
     <table><thead><tr><th>By Account</th><th class="r">Calls</th><th class="r">Cost</th></tr></thead>
-    <tbody>${accountRows || '<tr><td colspan="3" style="color:#484f58;padding:14px">—</td></tr>'}</tbody></table>
+    <tbody>${accountRows || '<tr><td colspan="3" style="color:#94a3b8;padding:14px">—</td></tr>'}</tbody></table>
   </section>
   <section>
     <h2>By Client</h2>
     <table><thead><tr><th>Client</th><th class="r">Calls</th></tr></thead>
-    <tbody>${clientRows || '<tr><td colspan="2" style="color:#484f58;padding:14px">—</td></tr>'}</tbody></table>
+    <tbody>${clientRows || '<tr><td colspan="2" style="color:#94a3b8;padding:14px">—</td></tr>'}</tbody></table>
   </section>
 </div>
 
@@ -410,7 +410,7 @@ ${kpis.map(k => `<div class="card"><div class="l">${k.l}</div><div class="v">${k
         <th class="r" style="white-space:normal;line-height:1.3;text-align:center">Cache<br>Read</th>
         <th class="r">Total</th><th class="r">Cost</th>
       </tr></thead>
-      <tbody>${logRows || '<tr><td colspan="11" style="color:#484f58;padding:16px">No calls found</td></tr>'}</tbody>
+      <tbody>${logRows || '<tr><td colspan="11" style="color:#94a3b8;padding:16px">No calls found</td></tr>'}</tbody>
     </table>
   </div>
   ${pagingHtml}
