@@ -60,6 +60,19 @@ function fmtBkk(ms: number): string {
 	});
 }
 
+function fmtBkkParts(ms: number): { time: string; date: string } {
+	const d = new Date(ms);
+	const date = d.toLocaleDateString('en-GB', {
+		timeZone: 'Asia/Bangkok',
+		day: '2-digit', month: '2-digit', year: '2-digit',
+	});
+	const time = d.toLocaleTimeString('en-GB', {
+		timeZone: 'Asia/Bangkok',
+		hour: '2-digit', minute: '2-digit', second: '2-digit',
+	});
+	return { time, date };
+}
+
 function todayBkk(): string {
 	return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 }
@@ -79,11 +92,12 @@ function dateToMs(dateStr: string, endOfDay = false): number {
 	return new Date(dateStr + time).getTime();
 }
 
+function modelLabel(model: string): string {
+	return model.replace('claude-', '').split('-20')[0] || model;
+}
+
 function modelBadge(model: string): string {
-	const m = model.toLowerCase();
-	const color = m.includes('opus') ? '#7c3aed' : m.includes('haiku') ? '#059669' : '#2563eb';
-	const label = model.replace('claude-', '').split('-20')[0] || model;
-	return `<span style="background:${color}22;color:${color};border:1px solid ${color}55;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${esc(label)}</span>`;
+	return `<span class="chip model">${esc(modelLabel(model))}</span>`;
 }
 
 function normalizeClient(raw: string): string {
@@ -93,19 +107,20 @@ function normalizeClient(raw: string): string {
 
 function clientBadge(client: string): string {
 	const n = normalizeClient(client);
-	const colors: Record<string, string> = {
-		'claude-code': '#7c3aed', 'claude-code-vscode': '#0078d4', 'vscode': '#0078d4',
-		'desktop': '#d97706', 'api': '#059669', 'client': '#6b7280',
+	const colors: Record<string, [string, string]> = {
+		'claude-code':         ['#F1ECFF', '#7C3AED'],
+		'claude-code-vscode':  ['#E6F1FB', '#0078D4'],
+		'vscode':              ['#E6F1FB', '#0078D4'],
+		'desktop':             ['#FFF1E0', '#D97706'],
+		'api':                 ['#E8F5EC', '#2F8F4A'],
+		'client':              ['#EEF4FF', '#4B6FBF'],
 	};
-	const c = colors[n] ?? '#6b7280';
-	return `<span style="background:${c};color:#fff;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700">${esc(n)}</span>`;
+	const [bg, fg] = colors[n] ?? ['#EEF4FF', '#4B6FBF'];
+	return `<span class="chip" style="background:${bg};color:${fg}"><span class="dot-c"></span>${esc(n)}</span>`;
 }
 
-function preview(text: string, len = 140): string {
-	const t = text.trim().replace(/\s+/g, ' ');
-	const e = esc(t.slice(0, len));
-	if (t.length <= len) return e;
-	return `${e}… <button onclick="showFull(this)" data-full="${esc(t)}" style="background:none;border:none;color:#818cf8;font-size:11px;cursor:pointer;text-decoration:underline;padding:0 0 0 4px">more</button>`;
+function accountBadge(email: string): string {
+	return `<span class="chip acct">${esc(email || '—')}</span>`;
 }
 
 function toCsv(rows: ApiLog[]): string {
@@ -143,14 +158,18 @@ function buildWhere(filters: Filters): { clause: string; params: (string | numbe
 	return { clause: 'WHERE ' + conds.join(' AND '), params };
 }
 
+function pageBtn(p: number, cur: number, urlFn: (p: number) => string): string {
+	if (p === cur) return `<button class="page-btn active" disabled>${p}</button>`;
+	return `<a href="${urlFn(p)}" class="page-btn">${p}</a>`;
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 function buildDashboard(
 	rows: ApiLog[],
 	totalCount: number,
 	totals: { total: number; totalInput: number; totalOutput: number; totalCacheRead: number; totalCacheCreate: number; totalCost: number },
 	byModel: { model: string; n: number; tokens: number; cost: number }[],
-	byClient: { client: string; n: number }[],
-	byMachine: { machine_name: string; n: number }[],
+	byClient: { client: string; n: number; cost: number }[],
 	byAccount: { account_email: string; n: number; cost: number }[],
 	allModels: string[],
 	allAccounts: string[],
@@ -160,36 +179,6 @@ function buildDashboard(
 	firstMonthStr: string,
 	firstYearStr: string,
 ): string {
-
-	const kpis = [
-		{ l: 'API Calls',     v: num(totals.total) },
-		{ l: 'Input Tokens',  v: num(totals.totalInput) },
-		{ l: 'Output Tokens', v: num(totals.totalOutput) },
-		{ l: 'Cache Write',   v: num(totals.totalCacheCreate) },
-		{ l: 'Cache Read',    v: num(totals.totalCacheRead) },
-		{ l: 'Est. Cost',     v: '$' + num(totals.totalCost, 4) },
-	];
-
-	const modelRows  = byModel.map(m => `<tr><td>${modelBadge(m.model)}</td><td class="r">${num(m.n)}</td><td class="r">${num(m.tokens)}</td><td class="r cost">$${num(m.cost, 4)}</td></tr>`).join('');
-	const clientRows = byClient.map(c => `<tr><td>${clientBadge(c.client)}</td><td class="r">${num(c.n)}</td></tr>`).join('');
-	const machineRows = byMachine.map(m => `<tr><td><code style="font-size:12px">${esc(m.machine_name || '—')}</code></td><td class="r">${num(m.n)}</td></tr>`).join('');
-	const accountRows = byAccount.map(a => `<tr><td><code style="font-size:12px">${esc(a.account_email || '—')}</code></td><td class="r">${num(a.n)}</td><td class="r cost">$${num(a.cost, 4)}</td></tr>`).join('');
-
-	const logRows = rows.map(r =>
-		`<tr>
-			<td class="ts">${fmtBkk(r.ts)}</td>
-			<td>${clientBadge(r.client)}</td>
-			<td><code style="font-size:11px">${esc(r.account_email || '—')}</code></td>
-			<td>${modelBadge(r.model)}</td>
-			<td class="pmx">${preview(r.prompt)}</td>
-			<td class="r">${num(r.input_tokens)}</td>
-			<td class="r">${num(r.output_tokens)}</td>
-			<td class="r cw">${num(r.cache_creation_tokens)}</td>
-			<td class="r cr">${num(r.cache_read_tokens)}</td>
-			<td class="r b">${num(r.total_tokens)}</td>
-			<td class="r cost">$${num(r.cost_usd, 5)}</td>
-		</tr>`
-	).join('');
 
 	// ── Pagination ────────────────────────────────────────────────────────────
 	const perPageVal = filters.perPage === null ? 'all' : String(filters.perPage);
@@ -213,25 +202,38 @@ function buildDashboard(
 	let pageButtons = '';
 	if (filters.perPage !== null && totalPages > 1) {
 		const parts: string[] = [];
-		let s = Math.max(1, cur - 3);
-		const e = Math.min(totalPages, s + 6);
-		if (e - s < 6) s = Math.max(1, e - 6);
-		if (s > 1)  parts.push(`<a href="${pageUrl(1)}" class="pg-btn">1</a>`);
-		if (s > 2)  parts.push(`<span class="pg-ell">…</span>`);
-		for (let p = s; p <= e; p++) parts.push(`<a href="${pageUrl(p)}" class="pg-btn${p === cur ? ' pg-cur' : ''}">${p}</a>`);
-		if (e < totalPages - 1) parts.push(`<span class="pg-ell">…</span>`);
-		if (e < totalPages) parts.push(`<a href="${pageUrl(totalPages)}" class="pg-btn">${totalPages}</a>`);
+		if (totalPages <= 7) {
+			for (let p = 1; p <= totalPages; p++) parts.push(pageBtn(p, cur, pageUrl));
+		} else {
+			parts.push(pageBtn(1, cur, pageUrl));
+			if (cur > 3) parts.push(`<button class="page-btn ellipsis" disabled>…</button>`);
+			const s = Math.max(2, cur - 1);
+			const e = Math.min(totalPages - 1, cur + 1);
+			for (let p = s; p <= e; p++) parts.push(pageBtn(p, cur, pageUrl));
+			if (cur < totalPages - 2) parts.push(`<button class="page-btn ellipsis" disabled>…</button>`);
+			parts.push(pageBtn(totalPages, cur, pageUrl));
+		}
 		pageButtons = parts.join('');
 	}
 
-	const prevBtn = cur > 1        ? `<a href="${pageUrl(cur - 1)}" class="pg-btn">‹</a>` : `<span class="pg-btn pg-dis">‹</span>`;
-	const nextBtn = cur < totalPages ? `<a href="${pageUrl(cur + 1)}" class="pg-btn">›</a>` : `<span class="pg-btn pg-dis">›</span>`;
+	const arrowL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>';
+	const arrowR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
 
-	const pagingHtml = `
-	<div class="paging">
-		<span class="pg-info">Showing ${num(rows.length)} of ${num(totalCount)} records</span>
-		<div class="pg-btns">${prevBtn}${pageButtons}${nextBtn}</div>
-	</div>`;
+	const prevBtn = cur > 1
+		? `<a href="${pageUrl(cur - 1)}" class="page-btn">${arrowL}<span class="hide-sm">Prev</span></a>`
+		: `<button class="page-btn" disabled>${arrowL}<span class="hide-sm">Prev</span></button>`;
+	const nextBtn = cur < totalPages
+		? `<a href="${pageUrl(cur + 1)}" class="page-btn"><span class="hide-sm">Next</span>${arrowR}</a>`
+		: `<button class="page-btn" disabled><span class="hide-sm">Next</span>${arrowR}</button>`;
+
+	const startIdx = totalCount === 0 ? 0 : (filters.perPage === null ? 1 : (cur - 1) * filters.perPage + 1);
+	const endIdx = filters.perPage === null ? totalCount : Math.min(cur * filters.perPage, totalCount);
+
+	const paginationHtml = `
+		<div class="pagination">
+			<div class="info">แสดง <strong>${num(startIdx)}–${num(endIdx)}</strong> จาก <strong>${num(totalCount)}</strong> รายการ</div>
+			<div class="pages">${prevBtn}${pageButtons}${nextBtn}</div>
+		</div>`;
 
 	// ── Export URL (carries current filters, no paging) ──────────────────────
 	const exportParams = new URLSearchParams({ date_from: filters.dateFrom, date_to: filters.dateTo });
@@ -241,204 +243,564 @@ function buildDashboard(
 	const exportUrl = '/export?' + exportParams.toString();
 
 	// ── Dropdown options ──────────────────────────────────────────────────────
-	const modelOpts   = allModels.map(m   => `<option value="${esc(m)}"${filters.model   === m   ? ' selected' : ''}>${esc(m.replace('claude-', '').split('-20')[0] || m)}</option>`).join('');
+	const modelOpts   = allModels.map(m   => `<option value="${esc(m)}"${filters.model   === m   ? ' selected' : ''}>${esc(modelLabel(m))}</option>`).join('');
 	const accountOpts = allAccounts.map(a => `<option value="${esc(a)}"${filters.account === a   ? ' selected' : ''}>${esc(a || '—')}</option>`).join('');
 	const clientOpts  = allClients.map(c  => `<option value="${esc(c)}"${filters.client  === c   ? ' selected' : ''}>${esc(c)}</option>`).join('');
 
+	// ── Breakdown bar rows ────────────────────────────────────────────────────
+	function barRows(items: { name: string; n: number; cost: number; v: number }[], showCost = true): string {
+		if (items.length === 0) return `<div style="color:var(--ink-3);font-size:13px;padding:8px 0">ไม่มีข้อมูล</div>`;
+		const max = Math.max(...items.map(i => i.v), 1);
+		return items.map((it, i) => {
+			const pct = Math.max(2, (it.v / max) * 100);
+			return `<div class="bar-row">
+				<div class="name"><span class="swatch" style="background:var(--peach-${400 - (i % 3) * 100})"></span>${esc(it.name)}</div>
+				<div class="num"><span>${num(it.n)} calls</span>${showCost ? `<strong>$${num(it.cost, 4)}</strong>` : ''}</div>
+				<div class="bar-track"><div class="bar-fill" data-pct="${pct.toFixed(1)}" style="width:0%"></div></div>
+			</div>`;
+		}).join('');
+	}
+
+	const byModelHtml   = barRows(byModel.map(m => ({ name: modelLabel(m.model), n: m.n, cost: m.cost ?? 0, v: m.cost ?? m.n })));
+	const byAccountHtml = barRows(byAccount.map(a => ({ name: a.account_email || '—', n: a.n, cost: a.cost ?? 0, v: a.cost ?? a.n })));
+	const byClientHtml  = barRows(byClient.map(c => ({ name: c.client, n: c.n, cost: c.cost ?? 0, v: c.cost ?? c.n })));
+
+	// ── KPI cards ─────────────────────────────────────────────────────────────
+	// (Estimated Cost rendered as featured separately)
+	const statCards = [
+		{ label: 'API Calls',     value: num(totals.total),           sub: 'requests',  icon: 'svg-api' },
+		{ label: 'Input Tokens',  value: num(totals.totalInput),      sub: 'in prompts', icon: 'svg-in' },
+		{ label: 'Output Tokens', value: num(totals.totalOutput),     sub: 'from model', icon: 'svg-out' },
+		{ label: 'Cache Write',   value: num(totals.totalCacheCreate),sub: 'tokens',     icon: 'svg-cw' },
+		{ label: 'Cache Read',    value: num(totals.totalCacheRead),  sub: 'tokens hit', icon: 'svg-cr' },
+	];
+	const statSvg: Record<string, string> = {
+		'svg-api': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
+		'svg-in':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
+		'svg-out': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+		'svg-cw':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>',
+		'svg-cr':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>',
+	};
+	const statCardsHtml = statCards.map(s => `
+		<div class="stat">
+			<div class="label"><span class="icon">${statSvg[s.icon]}</span>${s.label}</div>
+			<div class="value">${s.value}</div>
+			<div class="trend">${s.sub}</div>
+		</div>`).join('');
+
+	// ── Log rows (table + mobile cards) ───────────────────────────────────────
+	function trunc(s: string, n: number): string { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+	const logRows = rows.map(r => {
+		const { time, date } = fmtBkkParts(r.ts);
+		const fullPrompt = esc(r.prompt);
+		return `<tr data-full="${fullPrompt}">
+			<td><span class="time">${esc(time)}<span class="date">${esc(date)}</span></span></td>
+			<td>${clientBadge(r.client)}</td>
+			<td>${accountBadge(r.account_email)}</td>
+			<td>${modelBadge(r.model)}</td>
+			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div><span class="more">เปิดดูเต็ม →</span></td>
+			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${num(r.output_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${num(r.cache_creation_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${num(r.cache_read_tokens)}</span></td>
+			<td class="cost-cell">$${num(r.cost_usd, 5)}</td>
+		</tr>`;
+	}).join('');
+
+	const logCards = rows.map(r => {
+		const { time, date } = fmtBkkParts(r.ts);
+		const fullPrompt = esc(r.prompt);
+		return `<div class="log-card" data-full="${fullPrompt}">
+			<div class="top">
+				<span class="time">${esc(time)} <span class="date" style="display:inline">${esc(date)}</span></span>
+				<span class="cost-big">$${num(r.cost_usd, 5)}</span>
+			</div>
+			<div class="prompt">${esc(r.prompt)}</div>
+			<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+				${modelBadge(r.model)}
+				${clientBadge(r.client)}
+			</div>
+			<div class="meta-grid">
+				<div>Account<strong style="font-size:11px;">${esc(r.account_email || '—')}</strong></div>
+				<div>Total tokens<strong>${num(r.total_tokens)}</strong></div>
+				<div>Input / Output<strong>${num(r.input_tokens)} / ${num(r.output_tokens)}</strong></div>
+				<div>Cache W / R<strong>${num(r.cache_creation_tokens)} / ${num(r.cache_read_tokens)}</strong></div>
+			</div>
+		</div>`;
+	}).join('');
+
+	const emptyTable = `<tr><td colspan="10" style="padding:32px 26px;color:var(--ink-3);text-align:center;">ไม่พบรายการ</td></tr>`;
+	const emptyCards = `<div style="padding:32px 16px;color:var(--ink-3);text-align:center;font-size:14px;">ไม่พบรายการ</div>`;
+
+	// ── Trend data (current page rows, oldest → newest) ──────────────────────
+	const trendData = JSON.stringify(rows.slice().reverse().map(r => r.cost_usd));
+	const trendCount = rows.length;
+
+	const estCost = '$' + num(totals.totalCost, 4);
+
 	return `<!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0d1117;color:#c9d1d9;font-size:14px}
-header{background:#161b22;border-bottom:1px solid #30363d;padding:14px 24px;display:flex;align-items:center;gap:10px}
-header h1{font-size:17px;font-weight:700;color:#a78bfa}
-.sub{font-size:12px;color:#484f58;margin-left:auto}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#3fb950;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-main{padding:20px 24px;max-width:1700px;margin:0 auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin-bottom:20px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 16px}
-.card .l{font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:#484f58;font-weight:700;margin-bottom:5px}
-.card .v{font-size:24px;font-weight:700;color:#f0f6fc;line-height:1}
-.four{display:grid;grid-template-columns:1.6fr 1.4fr 1fr 1fr;gap:14px;margin-bottom:20px}
-@media(max-width:1100px){.four{grid-template-columns:1fr 1fr}}
-section{margin-bottom:20px}
-section h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58;margin-bottom:8px}
-table{width:100%;border-collapse:collapse;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden}
-th{background:#0d1117;padding:7px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#484f58;border-bottom:1px solid #30363d;white-space:nowrap}
-td{padding:7px 12px;border-bottom:1px solid #21262d;vertical-align:top}
-tr:last-child td{border-bottom:none}
-tr:hover td{background:#1c2128}
-.r{text-align:right;font-variant-numeric:tabular-nums}
-.b{font-weight:700;color:#f0f6fc}
-.cost{color:#f0883e}
-.cw{color:#a78bfa}
-.cr{color:#3fb950}
-.ts{white-space:nowrap;font-size:12px;color:#484f58;font-family:monospace}
-.pmx{max-width:380px;word-break:break-word;font-size:13px;color:#8b949e}
-#modal{display:none;position:fixed;inset:0;background:#000000aa;z-index:999;align-items:center;justify-content:center}
-#modal.open{display:flex}
-.mbox{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:22px;max-width:820px;width:92%;box-shadow:0 16px 48px #000a}
-.mhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.mhead h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58}
-.mbody{font-size:13px;line-height:1.75;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;max-height:68vh;overflow-y:auto;background:#0d1117;border-radius:6px;padding:14px;border:1px solid #30363d}
-.cls{background:none;border:none;color:#484f58;font-size:18px;cursor:pointer;padding:0 4px;line-height:1}
-.cls:hover{color:#f0f6fc}
-.filter-bar{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
-.fg{display:flex;flex-direction:column;gap:4px}
-.fg label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#484f58}
-.fg select,.fg input[type=date]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:5px 8px;font-size:13px;height:30px;cursor:pointer;min-width:120px}
-.fg select:focus,.fg input[type=date]:focus{outline:none;border-color:#a78bfa}
-.fg input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.6)}
-.apply-btn{background:#a78bfa;color:#0d1117;border:none;border-radius:5px;padding:5px 16px;font-size:13px;font-weight:700;cursor:pointer;height:30px;align-self:flex-end}
-.apply-btn:hover{background:#c4b5fd}
-.export-btn{background:none;border:1px solid #3fb950;color:#3fb950;border-radius:5px;padding:5px 14px;font-size:13px;font-weight:700;cursor:pointer;height:30px;align-self:flex-end;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
-.export-btn:hover{background:#3fb95022}
-.tbl-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.tbl-hdr h2{margin:0}
-.perpage-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:#484f58}
-.perpage-wrap select{background:#161b22;border:1px solid #30363d;color:#c9d1d9;border-radius:4px;padding:2px 6px;font-size:12px;cursor:pointer}
-.paging{display:flex;align-items:center;justify-content:space-between;margin-top:12px;flex-wrap:wrap;gap:8px}
-.pg-info{font-size:12px;color:#484f58}
-.pg-btns{display:flex;gap:4px;align-items:center}
-.pg-btn{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:26px;padding:0 6px;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-size:12px;text-decoration:none}
-.pg-btn:hover:not(.pg-dis):not(.pg-cur){background:#21262d;border-color:#484f58}
-.pg-cur{background:#a78bfa22;border-color:#a78bfa;color:#a78bfa;font-weight:700}
-.pg-dis{color:#484f58;cursor:default}
-.pg-ell{color:#484f58;font-size:12px;padding:0 2px}
+:root {
+	--bg: #FFF8F3;
+	--bg-soft: #FFF1E6;
+	--card: #FFFFFF;
+	--peach-50: #FFF1E6;
+	--peach-100: #FFE4D2;
+	--peach-200: #FFD1B3;
+	--peach-300: #FFB088;
+	--peach-400: #FF9466;
+	--peach-500: #F47948;
+	--ink: #2A1A12;
+	--ink-2: #5A4A3F;
+	--ink-3: #8B7B6E;
+	--line: #F3E4D4;
+	--line-2: #EAD7C2;
+	--good: #6FB48A;
+	--shadow: 0 1px 0 rgba(180, 120, 70, 0.06), 0 8px 24px -12px rgba(180, 120, 70, 0.18);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+	font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+	background: var(--bg);
+	background-image:
+		radial-gradient(1200px 600px at 100% -10%, #FFE4D2 0%, transparent 60%),
+		radial-gradient(900px 500px at -10% 110%, #FFEFE0 0%, transparent 60%);
+	color: var(--ink);
+	min-height: 100vh;
+	-webkit-font-smoothing: antialiased;
+	line-height: 1.4;
+}
+.mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.wrap { max-width: none; margin: 0 auto; padding: 32px 40px 80px; }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.logo { width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, var(--peach-300), var(--peach-500)); display: grid; place-items: center; box-shadow: 0 8px 20px -6px rgba(244, 121, 72, 0.45); flex-shrink: 0; }
+.logo svg { width: 28px; height: 28px; color: white; }
+.brand h1 { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -0.02em; margin: 0; line-height: 1; }
+.brand .sub { color: var(--ink-3); font-size: 14px; margin-top: 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--peach-300); }
+.live-dot { background: var(--good); box-shadow: 0 0 0 4px rgba(111, 180, 138, 0.18); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(111, 180, 138, 0.18); } 50% { box-shadow: 0 0 0 8px rgba(111, 180, 138, 0.05); } }
+.refresh-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; font-size: 13px; color: var(--ink-2); font-weight: 500; }
+
+.filters { margin-top: 28px; background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 20px; box-shadow: var(--shadow); }
+.filter-row { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; align-items: end; }
+.field { grid-column: span 2; }
+.field.lg { grid-column: span 3; }
+.field.dates { grid-column: span 2; }
+.field-actions { grid-column: span 12; display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.select, .date-input { width: 100%; height: 44px; padding: 0 14px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px; font-family: inherit; font-size: 14px; color: var(--ink); font-weight: 500; appearance: none; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.select:hover, .date-input:hover { border-color: var(--peach-300); }
+.select:focus, .date-input:focus { outline: none; border-color: var(--peach-400); background: white; box-shadow: 0 0 0 4px rgba(255, 148, 102, 0.15); }
+.select-wrap { position: relative; }
+.select-wrap::after { content: ''; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+
+.seg { display: flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px; padding: 4px; gap: 4px; height: 44px; }
+.seg button { flex: 1; border: 0; background: transparent; border-radius: 9px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--ink-2); cursor: pointer; transition: all 0.15s; }
+.seg button:hover { color: var(--ink); }
+.seg button.on { background: white; color: var(--peach-500); box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 2px 8px -2px rgba(244, 121, 72, 0.25); }
+
+.btn { height: 44px; padding: 0 22px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.15s; text-decoration: none; }
+.btn:hover { border-color: var(--peach-300); background: var(--peach-50); }
+.btn.primary { background: linear-gradient(180deg, var(--peach-300), var(--peach-400)); color: white; border-color: transparent; box-shadow: 0 4px 12px -2px rgba(244, 121, 72, 0.4); }
+.btn.primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.btn svg { width: 16px; height: 16px; }
+
+.stats { margin-top: 24px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 16px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 22px 22px 20px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+.stat .label { font-size: 13px; color: var(--ink-3); font-weight: 500; display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.stat .icon { width: 28px; height: 28px; border-radius: 8px; background: var(--peach-50); color: var(--peach-500); display: grid; place-items: center; flex-shrink: 0; }
+.stat .icon svg { width: 14px; height: 14px; }
+.stat .value { font-size: clamp(28px, 3.2vw, 38px); font-weight: 800; letter-spacing: -0.02em; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat .trend { margin-top: 10px; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.stat.featured { grid-column: span 2; background: linear-gradient(135deg, #FFF1E6 0%, #FFE4D2 100%); border-color: var(--peach-200); }
+.stat.featured .value { font-size: clamp(40px, 5vw, 60px); background: linear-gradient(135deg, var(--peach-500), #D45A2A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.stat.featured .icon { background: white; color: var(--peach-500); }
+
+.grid-2 { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 26px; box-shadow: var(--shadow); }
+.card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 12px; }
+.card h2 { font-size: 20px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.card .count { font-size: 12px; color: var(--ink-3); font-weight: 500; padding: 4px 10px; background: var(--bg-soft); border-radius: 999px; }
+
+.bar-row { display: grid; grid-template-columns: 1fr auto; gap: 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+.bar-row:first-of-type { border-top: 0; padding-top: 4px; }
+.bar-row .name { font-size: 15px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 10px; word-break: break-all; }
+.swatch { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
+.bar-row .num { display: flex; gap: 18px; align-items: center; font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.bar-row .num strong { color: var(--ink); font-weight: 700; font-size: 15px; font-family: "JetBrains Mono", monospace; }
+.bar-track { grid-column: 1 / -1; height: 8px; background: var(--peach-50); border-radius: 999px; overflow: hidden; margin-top: 4px; }
+.bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--peach-300), var(--peach-500)); transition: width 0.6s cubic-bezier(.2,.8,.2,1); }
+
+.logs { margin-top: 28px; background: var(--card); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
+.logs-head { padding: 22px 26px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.logs-head h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.logs-head .sub { color: var(--ink-3); font-size: 13px; margin-top: 4px; }
+.pager { display: flex; align-items: center; gap: 14px; color: var(--ink-2); font-size: 13px; }
+.pager .seg-sm { height: 36px; padding: 3px; }
+.pager .seg-sm button { font-size: 12px; padding: 0 10px; }
+
+.table-scroll { overflow-x: auto; }
+table.logs-table { width: 100%; min-width: 900px; border-collapse: collapse; }
+.logs-table th { text-align: left; font-size: 11px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; padding: 14px 16px; background: var(--bg-soft); white-space: nowrap; }
+.logs-table th:first-child { padding-left: 26px; }
+.logs-table th:last-child { padding-right: 26px; text-align: right; }
+.logs-table td { padding: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-2); vertical-align: middle; }
+.logs-table td:first-child { padding-left: 26px; }
+.logs-table td:last-child { padding-right: 26px; text-align: right; }
+.logs-table tbody tr { transition: background 0.12s; cursor: pointer; }
+.logs-table tbody tr:hover { background: var(--bg-soft); }
+
+.time { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--ink); font-weight: 500; white-space: nowrap; }
+.time .date { color: var(--ink-3); font-size: 11px; display: block; margin-top: 2px; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--peach-50); color: var(--peach-500); white-space: nowrap; word-break: break-all; }
+.chip.client { background: #EEF4FF; color: #4B6FBF; }
+.chip.acct { background: #F0F7EF; color: #4F8B5D; word-break: break-all; }
+.chip.model { background: #FFF1E6; color: #C45A26; }
+.chip .dot-c { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+.prompt-cell { max-width: 360px; color: var(--ink); font-weight: 500; line-height: 1.45; }
+.prompt-cell .truncate { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.prompt-cell .more { color: var(--peach-500); font-weight: 600; font-size: 12px; cursor: pointer; }
+.num-cell .mono { font-size: 13px; font-weight: 600; color: var(--ink); }
+.cost-cell { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 14px; color: var(--ink); }
+
+.pagination { display: flex; align-items: center; justify-content: space-between; padding: 18px 26px; border-top: 1px solid var(--line); background: var(--bg-soft); gap: 12px; flex-wrap: wrap; }
+.pagination .info { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.pagination .info strong { color: var(--ink); font-weight: 700; font-family: "JetBrains Mono", monospace; }
+.pagination .pages { display: flex; gap: 6px; align-items: center; }
+.page-btn { min-width: 38px; height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: white; color: var(--ink-2); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; text-decoration: none; }
+.page-btn:hover:not(:disabled) { border-color: var(--peach-300); background: var(--peach-50); color: var(--ink); }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-btn.active { background: linear-gradient(180deg, var(--peach-300), var(--peach-400)); color: white; border-color: transparent; box-shadow: 0 4px 10px -2px rgba(244, 121, 72, 0.35); opacity: 1; cursor: default; }
+.page-btn.ellipsis { border: 0; background: transparent; cursor: default; color: var(--ink-3); }
+.page-btn svg { width: 14px; height: 14px; }
+@media (max-width: 480px) { .hide-sm { display: none; } }
+
+.logs-cards { display: none; padding: 12px; }
+.log-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
+.log-card .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
+.log-card .prompt { font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.45; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.log-card .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+.log-card .meta-grid > div { font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.log-card .meta-grid strong { display: block; font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 2px; word-break: break-all; }
+.log-card .cost-big { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 16px; color: var(--ink); }
+
+.modal { position: fixed; inset: 0; background: rgba(42, 26, 18, 0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+.modal.open { display: flex; animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-card { background: var(--card); border-radius: 24px; max-width: 720px; width: 100%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 32px 80px -20px rgba(42, 26, 18, 0.4); animation: slideUp 0.25s cubic-bezier(.2,.8,.2,1); }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-head { padding: 22px 26px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.modal-head h3 { margin: 0; font-size: 18px; font-weight: 700; }
+.modal-close { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--bg-soft); cursor: pointer; font-size: 18px; color: var(--ink-2); display: grid; place-items: center; }
+.modal-close:hover { background: var(--peach-100); color: var(--ink); }
+.modal-body { padding: 24px 26px; overflow-y: auto; font-size: 14px; color: var(--ink-2); line-height: 1.6; white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
+
+@media (max-width: 1100px) {
+	.stats { grid-template-columns: repeat(3, 1fr); }
+	.stat.featured { grid-column: span 3; }
+}
+@media (max-width: 1100px) and (min-width: 761px) {
+	.field { grid-column: span 3; }
+	.field.lg { grid-column: span 6; }
+}
+@media (max-width: 760px) {
+	.wrap { padding: 20px 16px 60px; }
+	.grid-2 { grid-template-columns: 1fr; }
+	.stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+	.stat.featured { grid-column: span 2; }
+	.stat { padding: 16px; border-radius: 18px; }
+	.filter-row { grid-template-columns: 1fr 1fr; }
+	.field, .field.lg, .field.dates { grid-column: span 1; }
+	.field.full-mobile { grid-column: span 2; }
+	.field-actions { grid-column: span 2; }
+	.filters { padding: 16px; border-radius: 20px; }
+	.card { padding: 20px; border-radius: 18px; }
+	.table-scroll { display: none; }
+	.logs-cards { display: block; }
+	.logs-head { padding: 18px 18px; }
+	.logs-head h2 { font-size: 18px; }
+	.brand h1 { font-size: 28px; }
+	.logo { width: 44px; height: 44px; border-radius: 14px; }
+	.logo svg { width: 22px; height: 22px; }
+}
+@media (max-width: 600px) {
+	.pagination { padding: 14px 16px; flex-direction: column; align-items: stretch; }
+	.pagination .info { text-align: center; }
+	.pagination .pages { justify-content: center; flex-wrap: wrap; }
+}
+@media (max-width: 420px) {
+	.stats { grid-template-columns: 1fr; }
+	.stat.featured { grid-column: span 1; }
+	.filter-row { grid-template-columns: 1fr; }
+	.field, .field.lg, .field.dates, .field.full-mobile { grid-column: span 1; }
+	.field-actions { grid-column: span 1; }
+	.field-actions .btn { flex: 1; justify-content: center; }
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>⬡ Claude Monitor</h1>
-  <span class="dot"></span>
-  <span style="font-size:12px;color:#484f58">mitmproxy · refresh 15s</span>
-  <span class="sub">Asia/Bangkok</span>
-</header>
-<main>
+<div class="wrap">
 
-<form method="get" action="/" class="filter-bar" id="ff">
-  <div class="fg">
-    <label>Period</label>
-    <select name="period" id="period" onchange="onPeriod(this.value)">
-      <option value="daily"${filters.period === 'daily' ? ' selected' : ''}>Daily</option>
-      <option value="monthly"${filters.period === 'monthly' ? ' selected' : ''}>Monthly</option>
-      <option value="yearly"${filters.period === 'yearly' ? ' selected' : ''}>Yearly</option>
-    </select>
-  </div>
-  <div class="fg">
-    <label>Date From</label>
-    <input type="date" name="date_from" id="df" value="${esc(filters.dateFrom)}">
-  </div>
-  <div class="fg">
-    <label>Date To</label>
-    <input type="date" name="date_to" id="dt" value="${esc(filters.dateTo)}">
-  </div>
-  <div class="fg">
-    <label>Model</label>
-    <select name="model">
-      <option value="">All</option>
-      ${modelOpts}
-    </select>
-  </div>
-  <div class="fg">
-    <label>Account</label>
-    <select name="account">
-      <option value="">All</option>
-      ${accountOpts}
-    </select>
-  </div>
-  <div class="fg">
-    <label>Client</label>
-    <select name="client">
-      <option value="">All</option>
-      ${clientOpts}
-    </select>
-  </div>
-  <input type="hidden" name="per_page" id="pph" value="${esc(perPageVal)}">
-  <input type="hidden" name="page" value="1">
-  <button type="submit" class="apply-btn">Apply</button>
-  <a href="${exportUrl}" class="export-btn" download>↓ Export CSV</a>
-</form>
+	<header class="topbar">
+		<div class="brand">
+			<div class="logo" aria-hidden="true">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="12 2 22 8 22 16 12 22 2 16 2 8 12 2"></polygon>
+				</svg>
+			</div>
+			<div>
+				<h1>Claude Monitor</h1>
+				<div class="sub">
+					<span class="dot live-dot"></span>
+					<span>mitmproxy</span>
+					<span class="dot"></span>
+					<span>refresh 15s</span>
+					<span class="dot"></span>
+					<span>Asia/Bangkok</span>
+				</div>
+			</div>
+		</div>
+		<div class="refresh-pill">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+				<polyline points="23 4 23 10 17 10"></polyline>
+				<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+			</svg>
+			<span>อัปเดตล่าสุด <strong id="lastUpdate" class="mono">--:--:--</strong></span>
+		</div>
+	</header>
 
-<div class="grid">
-${kpis.map(k => `<div class="card"><div class="l">${k.l}</div><div class="v">${k.v}</div></div>`).join('\n')}
+	<form method="get" action="/" class="filters" id="ff" aria-label="ตัวกรองข้อมูล">
+		<div class="filter-row">
+			<div class="field full-mobile">
+				<label>Period</label>
+				<div class="seg" role="tablist" id="periodSeg">
+					<button type="button" data-period="daily"${filters.period === 'daily' ? ' class="on"' : ''}>Daily</button>
+					<button type="button" data-period="monthly"${filters.period === 'monthly' ? ' class="on"' : ''}>Monthly</button>
+					<button type="button" data-period="yearly"${filters.period === 'yearly' ? ' class="on"' : ''}>Yearly</button>
+				</div>
+				<input type="hidden" name="period" id="period" value="${esc(filters.period)}">
+			</div>
+			<div class="field dates">
+				<label>Date From</label>
+				<input type="date" class="date-input" name="date_from" id="df" value="${esc(filters.dateFrom)}">
+			</div>
+			<div class="field dates">
+				<label>Date To</label>
+				<input type="date" class="date-input" name="date_to" id="dt" value="${esc(filters.dateTo)}">
+			</div>
+			<div class="field">
+				<label>Model</label>
+				<div class="select-wrap">
+					<select class="select" name="model">
+						<option value=""${filters.model === '' ? ' selected' : ''}>All</option>
+						${modelOpts}
+					</select>
+				</div>
+			</div>
+			<div class="field">
+				<label>Account</label>
+				<div class="select-wrap">
+					<select class="select" name="account">
+						<option value=""${filters.account === '' ? ' selected' : ''}>All</option>
+						${accountOpts}
+					</select>
+				</div>
+			</div>
+			<div class="field">
+				<label>Client</label>
+				<div class="select-wrap">
+					<select class="select" name="client">
+						<option value=""${filters.client === '' ? ' selected' : ''}>All</option>
+						${clientOpts}
+					</select>
+				</div>
+			</div>
+			<input type="hidden" name="per_page" id="pph" value="${esc(perPageVal)}">
+			<input type="hidden" name="page" value="1">
+			<div class="field-actions">
+				<a href="${exportUrl}" class="btn" download>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+						<polyline points="7 10 12 15 17 10"></polyline>
+						<line x1="12" y1="15" x2="12" y2="3"></line>
+					</svg>
+					Export CSV
+				</a>
+				<button type="submit" class="btn primary">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="20 6 9 17 4 12"></polyline>
+					</svg>
+					Apply
+				</button>
+			</div>
+		</div>
+	</form>
+
+	<section class="stats" aria-label="สรุปยอดรวม">
+		<div class="stat featured">
+			<div class="label"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span>Estimated Cost</div>
+			<div class="value">${estCost}</div>
+			<div class="trend">ค่าใช้จ่ายสะสมในช่วงที่เลือก</div>
+		</div>
+		${statCardsHtml}
+	</section>
+
+	<section class="grid-2">
+		<div class="card">
+			<div class="card-head"><h2>By Model</h2><span class="count">${num(byModel.length)} model${byModel.length === 1 ? '' : 's'}</span></div>
+			<div>${byModelHtml}</div>
+		</div>
+		<div class="card">
+			<div class="card-head"><h2>By Account</h2><span class="count">${num(byAccount.length)} account${byAccount.length === 1 ? '' : 's'}</span></div>
+			<div>${byAccountHtml}</div>
+		</div>
+		<div class="card">
+			<div class="card-head"><h2>By Client</h2><span class="count">${num(byClient.length)} client${byClient.length === 1 ? '' : 's'}</span></div>
+			<div>${byClientHtml}</div>
+		</div>
+		<div class="card">
+			<div class="card-head"><h2>Cost Trend</h2><span class="count">last ${num(trendCount)} call${trendCount === 1 ? '' : 's'}</span></div>
+			<svg id="trendChart" viewBox="0 0 600 200" preserveAspectRatio="none" style="width:100%;height:200px;display:block;"></svg>
+		</div>
+	</section>
+
+	<section class="logs">
+		<div class="logs-head">
+			<div>
+				<h2>Count Call</h2>
+				<div class="sub">รายการเรียก API ทั้งหมด <span class="mono">${num(totalCount)}</span> records</div>
+			</div>
+			<div class="pager">
+				<span>Rows per page</span>
+				<div class="seg seg-sm" id="pageSizeSeg">
+					<button type="button" data-size="10"${perPageVal === '10' ? ' class="on"' : ''}>10</button>
+					<button type="button" data-size="20"${perPageVal === '20' ? ' class="on"' : ''}>20</button>
+					<button type="button" data-size="50"${perPageVal === '50' ? ' class="on"' : ''}>50</button>
+					<button type="button" data-size="100"${perPageVal === '100' ? ' class="on"' : ''}>100</button>
+					<button type="button" data-size="all"${perPageVal === 'all' ? ' class="on"' : ''}>All</button>
+				</div>
+			</div>
+		</div>
+
+		<div class="table-scroll">
+			<table class="logs-table">
+				<thead>
+					<tr>
+						<th>Time (BKK)</th><th>Client</th><th>Account</th><th>Model</th><th>Prompt</th>
+						<th>In</th><th>Out</th><th>Cache W</th><th>Cache R</th><th>Cost</th>
+					</tr>
+				</thead>
+				<tbody id="logsTableBody">${logRows || emptyTable}</tbody>
+			</table>
+		</div>
+
+		<div class="logs-cards" id="logsCards">${logCards || emptyCards}</div>
+
+		${paginationHtml}
+	</section>
+
 </div>
 
-<div class="four">
-  <section>
-    <h2>By Model</h2>
-    <table><thead><tr><th>Model</th><th class="r">Calls</th><th class="r">Tokens</th><th class="r">Cost</th></tr></thead>
-    <tbody>${modelRows || '<tr><td colspan="4" style="color:#484f58;padding:14px">No data</td></tr>'}</tbody></table>
-  </section>
-  <section>
-    <h2>By Account</h2>
-    <table><thead><tr><th>By Account</th><th class="r">Calls</th><th class="r">Cost</th></tr></thead>
-    <tbody>${accountRows || '<tr><td colspan="3" style="color:#484f58;padding:14px">—</td></tr>'}</tbody></table>
-  </section>
-  <section>
-    <h2>By Client</h2>
-    <table><thead><tr><th>Client</th><th class="r">Calls</th></tr></thead>
-    <tbody>${clientRows || '<tr><td colspan="2" style="color:#484f58;padding:14px">—</td></tr>'}</tbody></table>
-  </section>
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+	<div class="modal-card">
+		<div class="modal-head">
+			<h3>Full Prompt</h3>
+			<button class="modal-close" id="modalClose" aria-label="ปิด">✕</button>
+		</div>
+		<div class="modal-body" id="modalBody"></div>
+	</div>
 </div>
 
-<section>
-  <div class="tbl-hdr">
-    <h2>Count Call</h2>
-    <div class="perpage-wrap">
-      <span>Rows per page:</span>
-      <select onchange="onPerPage(this.value)">
-        <option value="20"${perPageVal === '20' ? ' selected' : ''}>20</option>
-        <option value="50"${perPageVal === '50' ? ' selected' : ''}>50</option>
-        <option value="100"${perPageVal === '100' ? ' selected' : ''}>100</option>
-        <option value="all"${perPageVal === 'all' ? ' selected' : ''}>All</option>
-      </select>
-    </div>
-  </div>
-  <div style="overflow-x:auto">
-    <table>
-      <thead><tr>
-        <th>Time (BKK)</th><th>Client</th><th>Account</th><th>Model</th><th>Prompt</th>
-        <th class="r" style="white-space:normal;line-height:1.3;text-align:center">Token<br>In</th>
-        <th class="r" style="white-space:normal;line-height:1.3;text-align:center">Token<br>Out</th>
-        <th class="r" style="white-space:normal;line-height:1.3;text-align:center">Cache<br>Write</th>
-        <th class="r" style="white-space:normal;line-height:1.3;text-align:center">Cache<br>Read</th>
-        <th class="r">Total</th><th class="r">Cost</th>
-      </tr></thead>
-      <tbody>${logRows || '<tr><td colspan="11" style="color:#484f58;padding:16px">No calls found</td></tr>'}</tbody>
-    </table>
-  </div>
-  ${pagingHtml}
-</section>
-</main>
-
-<div id="modal" onclick="if(event.target===this)closeM()">
-  <div class="mbox">
-    <div class="mhead"><h3>Full Prompt</h3><button class="cls" onclick="closeM()">✕</button></div>
-    <div id="mbody" class="mbody"></div>
-  </div>
-</div>
 <script>
-function showFull(b){document.getElementById('mbody').textContent=b.dataset.full;document.getElementById('modal').classList.add('open')}
-function closeM(){document.getElementById('modal').classList.remove('open')}
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM()})
-
 const D_TODAY='${todayStr}', D_MONTH='${firstMonthStr}', D_YEAR='${firstYearStr}';
-function onPeriod(v){
-  if(v==='daily'){document.getElementById('df').value=D_TODAY;document.getElementById('dt').value=D_TODAY}
-  else if(v==='monthly'){document.getElementById('df').value=D_MONTH;document.getElementById('dt').value=D_TODAY}
-  else if(v==='yearly'){document.getElementById('df').value=D_YEAR;document.getElementById('dt').value=D_TODAY}
-  document.getElementById('ff').submit();
-}
-function onPerPage(v){document.getElementById('pph').value=v;document.getElementById('ff').submit()}
+const TREND_DATA=${trendData};
 
-// preserve filter params during auto-refresh
-setTimeout(()=>location.replace(location.href), 15000);
+// Period seg
+document.querySelectorAll('#periodSeg button').forEach(b => b.addEventListener('click', () => {
+	const v = b.dataset.period;
+	document.getElementById('period').value = v;
+	if (v === 'daily')   { document.getElementById('df').value = D_TODAY; document.getElementById('dt').value = D_TODAY; }
+	else if (v === 'monthly') { document.getElementById('df').value = D_MONTH; document.getElementById('dt').value = D_TODAY; }
+	else if (v === 'yearly')  { document.getElementById('df').value = D_YEAR;  document.getElementById('dt').value = D_TODAY; }
+	document.getElementById('ff').submit();
+}));
+
+// Rows per page seg
+document.querySelectorAll('#pageSizeSeg button').forEach(b => b.addEventListener('click', () => {
+	document.getElementById('pph').value = b.dataset.size;
+	document.getElementById('ff').submit();
+}));
+
+// Modal
+const modal = document.getElementById('modal');
+function openModal(text) {
+	document.getElementById('modalBody').textContent = text;
+	modal.classList.add('open');
+}
+function closeModal() { modal.classList.remove('open'); }
+document.getElementById('modalClose').addEventListener('click', closeModal);
+modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+document.querySelectorAll('#logsTableBody tr[data-full]').forEach(tr => {
+	tr.addEventListener('click', () => openModal(tr.dataset.full));
+});
+document.querySelectorAll('#logsCards .log-card[data-full]').forEach(c => {
+	c.addEventListener('click', () => openModal(c.dataset.full));
+});
+
+// Animate bar fills
+requestAnimationFrame(() => {
+	document.querySelectorAll('.bar-fill').forEach(b => { b.style.width = (b.dataset.pct || '0') + '%'; });
+});
+
+// Trend chart
+(function () {
+	const svg = document.getElementById('trendChart');
+	if (!svg || !TREND_DATA.length) return;
+	const w = 600, h = 200, pad = 16;
+	const maxC = Math.max.apply(null, TREND_DATA);
+	const range = maxC > 0 ? maxC : 1;
+	const n = TREND_DATA.length;
+	const pts = TREND_DATA.map((c, i) => {
+		const x = pad + (n === 1 ? (w - pad * 2) / 2 : (i / (n - 1)) * (w - pad * 2));
+		const y = h - pad - (c / range) * (h - pad * 2);
+		return [x, y];
+	});
+	const path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+	const area = path + ' L' + pts[pts.length - 1][0] + ',' + (h - pad) + ' L' + pts[0][0] + ',' + (h - pad) + ' Z';
+	svg.innerHTML =
+		'<defs><linearGradient id="grad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF9466" stop-opacity="0.4"/><stop offset="100%" stop-color="#FFB088" stop-opacity="0"/></linearGradient></defs>' +
+		'<path d="' + area + '" fill="url(#grad)"/>' +
+		'<path d="' + path + '" fill="none" stroke="#F47948" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+		pts.map(p => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.5" fill="white" stroke="#F47948" stroke-width="2"/>').join('');
+})();
+
+// Live clock (Asia/Bangkok)
+function tick() {
+	const t = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+	const el = document.getElementById('lastUpdate');
+	if (el) el.textContent = t;
+}
+tick(); setInterval(tick, 1000);
+
+// Preserve filter params during auto-refresh
+setTimeout(() => location.replace(location.href), 15000);
 </script>
 </body>
 </html>`;
@@ -506,8 +868,8 @@ export default {
 			const account  = url.searchParams.get('account')   || '';
 			const client   = url.searchParams.get('client')    || '';
 
-			const perPageRaw = url.searchParams.get('per_page') || '20';
-			const perPage: number | null = perPageRaw === 'all' ? null : Math.max(1, parseInt(perPageRaw) || 20);
+			const perPageRaw = url.searchParams.get('per_page') || '10';
+			const perPage: number | null = perPageRaw === 'all' ? null : Math.max(1, parseInt(perPageRaw) || 10);
 			const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
 
 			const filters: Filters = { period, dateFrom, dateTo, model, account, client, page, perPage };
@@ -516,7 +878,7 @@ export default {
 			const offset = perPage === null ? 0 : (page - 1) * perPage;
 			const limitClause = perPage === null ? '' : `LIMIT ${perPage} OFFSET ${offset}`;
 
-			const [rows, countRow, totals, byModel, byClient, byMachine, byAccount, allModelsRes, allAccountsRes, allClientsRes] = await Promise.all([
+			const [rows, countRow, totals, byModel, byClient, byAccount, allModelsRes, allAccountsRes, allClientsRes] = await Promise.all([
 				env.DB.prepare(`SELECT * FROM api_logs ${clause} ORDER BY ts DESC ${limitClause}`)
 					.bind(...params).all<ApiLog>(),
 				env.DB.prepare(`SELECT COUNT(*) as n FROM api_logs ${clause}`)
@@ -526,15 +888,12 @@ export default {
 					        SUM(cache_read_tokens) as totalCacheRead, SUM(cache_creation_tokens) as totalCacheCreate,
 					        SUM(cost_usd) as totalCost FROM api_logs ${clause}`
 				).bind(...params).first<{ total: number; totalInput: number; totalOutput: number; totalCacheRead: number; totalCacheCreate: number; totalCost: number }>(),
-				env.DB.prepare(`SELECT model, COUNT(*) as n, SUM(total_tokens) as tokens, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY model ORDER BY n DESC`)
+				env.DB.prepare(`SELECT model, COUNT(*) as n, SUM(total_tokens) as tokens, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY model ORDER BY cost DESC`)
 					.bind(...params).all<{ model: string; n: number; tokens: number; cost: number }>(),
-				env.DB.prepare(`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client, COUNT(*) as n FROM api_logs ${clause} GROUP BY 1 ORDER BY n DESC`)
-					.bind(...params).all<{ client: string; n: number }>(),
-				env.DB.prepare(`SELECT machine_name, COUNT(*) as n FROM api_logs ${clause} GROUP BY machine_name ORDER BY n DESC`)
-					.bind(...params).all<{ machine_name: string; n: number }>(),
-				env.DB.prepare(`SELECT account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY account_email ORDER BY n DESC`)
+				env.DB.prepare(`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
+					.bind(...params).all<{ client: string; n: number; cost: number }>(),
+				env.DB.prepare(`SELECT account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY account_email ORDER BY cost DESC`)
 					.bind(...params).all<{ account_email: string; n: number; cost: number }>(),
-				// distinct values for dropdowns (unfiltered)
 				env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
 				env.DB.prepare(`SELECT DISTINCT account_email FROM api_logs WHERE account_email != '' ORDER BY account_email`).all<{ account_email: string }>(),
 				env.DB.prepare(`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
@@ -545,7 +904,7 @@ export default {
 				countRow?.n ?? 0,
 				{ total: totals?.total ?? 0, totalInput: totals?.totalInput ?? 0, totalOutput: totals?.totalOutput ?? 0,
 				  totalCacheRead: totals?.totalCacheRead ?? 0, totalCacheCreate: totals?.totalCacheCreate ?? 0, totalCost: totals?.totalCost ?? 0 },
-				byModel.results, byClient.results, byMachine.results, byAccount.results,
+				byModel.results, byClient.results, byAccount.results,
 				allModelsRes.results.map(r => r.model),
 				allAccountsRes.results.map(r => r.account_email),
 				allClientsRes.results.map(r => r.client),
