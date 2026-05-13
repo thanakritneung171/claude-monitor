@@ -1,11 +1,12 @@
-.stats { margin-top: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
-.stat .label { font-size: 11px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
-.stat .value { font-size: clamp(22px, 2vw, 28px); font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; font-variant-numeric: tabular-nums; }
-.stat.featured { background: linear-gradient(135deg, #FFF1E6 0%, #FFE4D2 100%); border-color: var(--peach-200); }
-.stat.featured .value { background: linear-gradient(135deg, var(--peach-500), #D45A2A); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.stat .delta { font-size: 11px; color: var(--ink-3); margin-top: 6px; font-weight: 500; }
-.stat .delta.up { color: var(--good); }
+/* Account-specific stat cards (4-up, distinct from dashboard's 6 gradient cards) */
+.acc-stats { margin-top: 4px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.acc-stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+.acc-stat .label { font-size: 11px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.acc-stat .value { font-size: clamp(22px, 2vw, 28px); font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; font-variant-numeric: tabular-nums; }
+.acc-stat.featured { background: linear-gradient(135deg, #FFF1E6 0%, #FFE4D2 100%); border-color: var(--peach-200); }
+.acc-stat.featured .value { background: linear-gradient(135deg, var(--peach-500), #D45A2A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.acc-stat .delta { font-size: 11px; color: var(--ink-3); margin-top: 6px; font-weight: 500; }
+.acc-stat .delta.up { color: var(--good); }
 
 .toolbar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .toolbar .input-wrap { flex: 1 1 280px; }
@@ -15,12 +16,6 @@
 .view-toggle button:hover { color: var(--ink); }
 .view-toggle button.on { background: white; color: var(--peach-500); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
 .view-toggle svg { width: 14px; height: 14px; }
-
-/* Page title row */
-.page-head { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
-.page-head h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; margin: 0; }
-.page-head .sub { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
-.page-head .actions { display: flex; gap: 8px; }
 
 /* Grid */
 .accounts-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
@@ -66,5 +61,5 @@ body.list-mode .accounts-table { display: block; }
 
 .empty-state { padding: 48px 20px; text-align: center; color: var(--ink-3); font-size: 14px; }
 
-@media (max-width: 1000px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr; } .accounts-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .acc-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) { .acc-stats { grid-template-columns: 1fr 1fr; } .accounts-grid { grid-template-columns: 1fr; } }

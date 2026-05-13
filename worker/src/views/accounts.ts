@@ -1,16 +1,18 @@
 import html from './accounts.html';
-import sharedCss from './shared.css';
 import pageCss from './accounts.css';
 import clientJs from './accounts.client.js';
 
 import type { AccountsListData } from '../db/queries';
+import type { User } from '../types';
 import { esc, num } from '../lib/format';
+import { renderLayout } from './layout';
 import { modelLabel } from '../lib/badge';
 import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTimeTh, compactNum } from '../lib/account';
 
 export interface AccountsRenderInput {
 	data: AccountsListData;
 	period: '7d' | '30d' | '90d' | 'all';
+	user?: User;
 }
 
 function modelChip(model: string): string {
@@ -104,8 +106,6 @@ export function renderAccounts(input: AccountsRenderInput): string {
 		+ '&date_to=' + new Date().toISOString().slice(0, 10);
 
 	const replacements: Record<string, string> = {
-		'{{sharedCss}}': sharedCss,
-		'{{pageCss}}':   pageCss,
 		'{{clientJs}}':  clientJs,
 		'{{activeAccounts}}': num(data.activeAccounts),
 		'{{totalAccounts}}':  num(data.totalAccounts),
@@ -125,9 +125,18 @@ export function renderAccounts(input: AccountsRenderInput): string {
 		'{{exportUrl}}':  exportUrl,
 	};
 
-	let out = html;
-	for (const [k, v] of Object.entries(replacements)) out = out.split(k).join(v);
-	return out;
+	let content = html;
+	for (const [k, v] of Object.entries(replacements)) content = content.split(k).join(v);
+
+	return renderLayout({
+		activeNav: 'accounts',
+		user: input.user,
+		pageTitle: 'Accounts',
+		pageSubtitle: 'รายชื่อ account ทั้งหมดที่เชื่อมต่อ Claude API พร้อมสรุปการใช้งาน',
+		content,
+		pageCss,
+		title: 'Accounts — SDB AI Insight',
+	});
 }
 
 function daysFromPeriod(p: string): number {

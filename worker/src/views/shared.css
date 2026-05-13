@@ -14,6 +14,7 @@
 	--line: #F3E4D4;
 	--line-2: #EAD7C2;
 	--good: #6FB48A;
+	--bad: #D14343;
 	--shadow: 0 1px 0 rgba(180, 120, 70, 0.06), 0 8px 24px -12px rgba(180, 120, 70, 0.18);
 }
 * { box-sizing: border-box; }
@@ -33,35 +34,14 @@ body {
 .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 a { color: inherit; text-decoration: none; }
 
-.wrap { max-width: 1500px; margin: 0 auto; padding: 18px 22px 48px; }
+.main { min-width: 0; }
 
-/* Header */
-.topbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 12px; }
-.logo {
-	width: 36px; height: 36px;
-	border-radius: 10px;
-	background: linear-gradient(135deg, var(--peach-300), var(--peach-500));
-	display: grid; place-items: center;
-	box-shadow: 0 6px 14px -6px rgba(244, 121, 72, 0.45);
-	flex-shrink: 0;
-}
-.logo svg { width: 18px; height: 18px; color: white; }
-.brand h1 { font-size: clamp(18px, 2vw, 24px); font-weight: 800; letter-spacing: -0.02em; margin: 0; line-height: 1; }
-.brand .sub { color: var(--ink-3); font-size: 12px; margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--peach-300); }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--peach-300); display: inline-block; }
 .live-dot { background: var(--good); box-shadow: 0 0 0 4px rgba(111, 180, 138, 0.18); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse {
 	0%, 100% { box-shadow: 0 0 0 4px rgba(111, 180, 138, 0.18); }
 	50% { box-shadow: 0 0 0 8px rgba(111, 180, 138, 0.05); }
 }
-
-.topnav { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin-left: auto; }
-.topnav a { padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink-2); transition: all 0.15s; }
-.topnav a:hover { background: var(--peach-50); color: var(--ink); }
-.topnav a.on { background: linear-gradient(180deg, var(--peach-300), var(--peach-400)); color: white; box-shadow: 0 3px 8px -2px rgba(244, 121, 72, 0.35); }
-
-.refresh-pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--ink-2); font-weight: 500; }
 
 /* Buttons */
 .btn { height: 36px; padding: 0 16px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: all 0.15s; text-decoration: none; }
@@ -70,6 +50,8 @@ a { color: inherit; text-decoration: none; }
 .btn.primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
 .btn.ghost { background: transparent; border-color: transparent; }
 .btn.ghost:hover { background: var(--peach-50); }
+.btn.danger { background: #FFEEEE; color: var(--bad); border-color: #F3CACA; }
+.btn.danger:hover { background: #FFE0E0; border-color: #E4A8A8; }
 .btn svg { width: 14px; height: 14px; }
 
 /* Inputs */
@@ -115,14 +97,8 @@ a { color: inherit; text-decoration: none; }
 .avatar { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; font-size: 14px; color: white; flex-shrink: 0; }
 
 /* Breadcrumb */
-.breadcrumb { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--ink-3); }
+.breadcrumb { display: flex; align-items: center; gap: 8px; margin: -4px 0 14px; font-size: 13px; color: var(--ink-3); }
 .breadcrumb a { color: var(--ink-2); font-weight: 500; padding: 4px 8px; border-radius: 6px; }
 .breadcrumb a:hover { background: var(--peach-50); color: var(--ink); }
 .breadcrumb .sep { color: var(--ink-3); }
 .breadcrumb .current { color: var(--ink); font-weight: 600; word-break: break-all; }
-
-@media (max-width: 760px) {
-	.wrap { padding: 14px 14px 48px; }
-	.topnav { width: 100%; order: 3; }
-	.topnav a { flex: 1; text-align: center; }
-}

@@ -46,3 +46,25 @@ export interface Totals {
 export interface ByModel { model: string; n: number; tokens: number; cost: number; }
 export interface ByClient { client: string; n: number; cost: number; }
 export interface ByAccount { account_email: string; n: number; cost: number; }
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+export type Role = 'admin' | 'viewer';
+
+export interface User {
+	id: string;
+	email: string;
+	password_hash: string;
+	role: Role;
+	created_at: number;
+	last_login_at: number | null;
+	status: 'active' | 'disabled';
+}
+
+export interface Session {
+	id: string;
+	user_id: string;
+	created_at: number;
+	expires_at: number;
+	ip: string | null;
+	user_agent: string | null;
+}

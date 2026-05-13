@@ -1,0 +1,32 @@
+.ds-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 4px; }
+.ds-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+.ds-card .head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ds-card .head .ic {
+	width: 40px; height: 40px;
+	border-radius: 10px;
+	background: var(--peach-50);
+	color: var(--peach-500);
+	display: grid; place-items: center;
+}
+.ds-card .head .ic svg { width: 20px; height: 20px; }
+.ds-card .head h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.ds-card .head .pill { margin-left: auto; font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 700; }
+.ds-card .head .pill.online { background: #DBF3E1; color: #2F8F4A; display: inline-flex; align-items: center; gap: 6px; }
+.ds-card .head .pill.online::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #2F8F4A; box-shadow: 0 0 0 3px rgba(47, 143, 74, 0.18); }
+.ds-card .head .pill.offline { background: #FFEEEE; color: var(--bad); }
+
+.kv-list { display: flex; flex-direction: column; gap: 10px; }
+.kv-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--line); }
+.kv-row:first-child { border-top: 0; padding-top: 0; }
+.kv-row .k { color: var(--ink-3); font-weight: 600; font-size: 12px; }
+.kv-row .v { font-family: "JetBrains Mono", monospace; font-weight: 600; color: var(--ink); }
+
+.code-block { background: #2A1A12; color: #FFF1E6; padding: 14px 16px; border-radius: 10px; font-family: "JetBrains Mono", monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; margin-top: 8px; }
+
+details.setup summary { font-size: 13px; font-weight: 700; color: var(--peach-500); cursor: pointer; padding: 6px 0; user-select: none; }
+details.setup summary:hover { color: var(--peach-400); }
+details.setup[open] summary { margin-bottom: 6px; }
+
+@media (max-width: 900px) {
+	.ds-grid { grid-template-columns: 1fr; }
+}

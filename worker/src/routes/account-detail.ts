@@ -1,4 +1,4 @@
-import type { Env } from '../types';
+import type { Env, User } from '../types';
 import { fetchAccountDetail } from '../db/queries';
 import { renderAccountDetail, type AccountDetailRenderInput } from '../views/account-detail';
 import { json } from '../lib/format';
@@ -15,7 +15,7 @@ function periodToRange(period: Period): { fromMs: number; toMs: number } {
 	return { fromMs: toMs - 30 * day, toMs };
 }
 
-export async function handleAccountDetail(url: URL, env: Env): Promise<Response> {
+export async function handleAccountDetail(url: URL, env: Env, user?: User): Promise<Response> {
 	const email = url.searchParams.get('email') || '';
 	if (!email) return json({ ok: false, error: 'Missing email param' }, 400);
 
@@ -28,6 +28,6 @@ export async function handleAccountDetail(url: URL, env: Env): Promise<Response>
 	const { fromMs, toMs } = periodToRange(period);
 	const data = await fetchAccountDetail(env, email, fromMs, toMs, clientFilter, modelFilter);
 
-	const html = renderAccountDetail({ data, period, clientFilter, modelFilter });
+	const html = renderAccountDetail({ data, period, clientFilter, modelFilter, user });
 	return new Response(html, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
 }

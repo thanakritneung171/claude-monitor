@@ -1,185 +1,130 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SDB AI Insight</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>{{css}}</style>
-</head>
-<body>
-<div class="wrap">
-
-	<header class="topbar">
-		<div class="brand">
-			<div class="logo" aria-hidden="true">
+<form method="get" action="/" class="filters" id="ff" aria-label="ตัวกรองข้อมูล">
+	<div class="filter-row">
+		<div class="field period">
+			<label>Period</label>
+			<div class="seg" role="tablist" id="periodSeg">
+				<button type="button" data-period="daily"{{periodDailyOn}}>Daily</button>
+				<button type="button" data-period="monthly"{{periodMonthlyOn}}>Monthly</button>
+				<button type="button" data-period="yearly"{{periodYearlyOn}}>Yearly</button>
+			</div>
+			<input type="hidden" name="period" id="period" value="{{period}}">
+		</div>
+		<div class="field dates">
+			<label>Date From</label>
+			<input type="date" class="date-input" name="date_from" id="df" value="{{dateFrom}}">
+		</div>
+		<div class="field dates">
+			<label>Date To</label>
+			<input type="date" class="date-input" name="date_to" id="dt" value="{{dateTo}}">
+		</div>
+		<div class="field">
+			<label>Model</label>
+			<div class="select-wrap">
+				<select class="select" name="model">
+					<option value=""{{modelAllSelected}}>All</option>
+					{{modelOpts}}
+				</select>
+			</div>
+		</div>
+		<div class="field">
+			<label>Account</label>
+			<div class="select-wrap">
+				<select class="select" name="account">
+					<option value=""{{accountAllSelected}}>All</option>
+					{{accountOpts}}
+				</select>
+			</div>
+		</div>
+		<div class="field">
+			<label>Client</label>
+			<div class="select-wrap">
+				<select class="select" name="client">
+					<option value=""{{clientAllSelected}}>All</option>
+					{{clientOpts}}
+				</select>
+			</div>
+		</div>
+		<input type="hidden" name="per_page" id="pph" value="{{perPageVal}}">
+		<input type="hidden" name="page" value="1">
+		<div class="field-actions">
+			<a href="{{exportUrl}}" class="btn" download>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-					<polygon points="12 2 22 8 22 16 12 22 2 16 2 8 12 2"></polygon>
+					<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+					<polyline points="7 10 12 15 17 10"></polyline>
+					<line x1="12" y1="15" x2="12" y2="3"></line>
 				</svg>
-			</div>
-			<div>
-				<h1>SDB AI Insight</h1>
-				<div class="sub">
-					<span class="dot live-dot"></span>
-					<span>mitmproxy</span>
-					<span class="dot"></span>
-					<span>refresh 15s</span>
-					<span class="dot"></span>
-					<span>Asia/Bangkok</span>
-				</div>
-			</div>
+				Export CSV
+			</a>
+			<button type="submit" class="btn primary">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="20 6 9 17 4 12"></polyline>
+				</svg>
+				Apply
+			</button>
 		</div>
-		<nav class="topnav">
-			<a href="/" class="on">Dashboard</a>
-			<a href="/accounts">Accounts</a>
-		</nav>
-		<div class="refresh-pill">
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-				<polyline points="23 4 23 10 17 10"></polyline>
-				<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-			</svg>
-			<span>อัปเดตล่าสุด <strong id="lastUpdate" class="mono">--:--:--</strong></span>
-		</div>
-	</header>
+	</div>
+</form>
 
-	<form method="get" action="/" class="filters" id="ff" aria-label="ตัวกรองข้อมูล">
-		<div class="filter-row">
-			<div class="field period">
-				<label>Period</label>
-				<div class="seg" role="tablist" id="periodSeg">
-					<button type="button" data-period="daily"{{periodDailyOn}}>Daily</button>
-					<button type="button" data-period="monthly"{{periodMonthlyOn}}>Monthly</button>
-					<button type="button" data-period="yearly"{{periodYearlyOn}}>Yearly</button>
-				</div>
-				<input type="hidden" name="period" id="period" value="{{period}}">
-			</div>
-			<div class="field dates">
-				<label>Date From</label>
-				<input type="date" class="date-input" name="date_from" id="df" value="{{dateFrom}}">
-			</div>
-			<div class="field dates">
-				<label>Date To</label>
-				<input type="date" class="date-input" name="date_to" id="dt" value="{{dateTo}}">
-			</div>
-			<div class="field">
-				<label>Model</label>
-				<div class="select-wrap">
-					<select class="select" name="model">
-						<option value=""{{modelAllSelected}}>All</option>
-						{{modelOpts}}
-					</select>
-				</div>
-			</div>
-			<div class="field">
-				<label>Account</label>
-				<div class="select-wrap">
-					<select class="select" name="account">
-						<option value=""{{accountAllSelected}}>All</option>
-						{{accountOpts}}
-					</select>
-				</div>
-			</div>
-			<div class="field">
-				<label>Client</label>
-				<div class="select-wrap">
-					<select class="select" name="client">
-						<option value=""{{clientAllSelected}}>All</option>
-						{{clientOpts}}
-					</select>
-				</div>
-			</div>
-			<input type="hidden" name="per_page" id="pph" value="{{perPageVal}}">
-			<input type="hidden" name="page" value="1">
-			<div class="field-actions">
-				<a href="{{exportUrl}}" class="btn" download>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-						<polyline points="7 10 12 15 17 10"></polyline>
-						<line x1="12" y1="15" x2="12" y2="3"></line>
-					</svg>
-					Export CSV
-				</a>
-				<button type="submit" class="btn primary">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-						<polyline points="20 6 9 17 4 12"></polyline>
-					</svg>
-					Apply
-				</button>
+<section class="stats stats-6">{{statCards}}</section>
+
+<section class="grid-3">
+	<div class="card">
+		<div class="card-head">
+			<h2>By Model</h2>
+			{{byModelShowMore}}
+		</div>
+		<div>{{byModelHtml}}</div>
+	</div>
+	<div class="card">
+		<div class="card-head">
+			<h2>By Account</h2>
+			{{byAccountShowMore}}
+		</div>
+		<div>{{byAccountHtml}}</div>
+	</div>
+	<div class="card">
+		<div class="card-head">
+			<h2>By Client</h2>
+			{{byClientShowMore}}
+		</div>
+		<div>{{byClientHtml}}</div>
+	</div>
+</section>
+
+<section class="logs">
+	<div class="logs-head">
+		<div>
+			<h2>Recent API Calls</h2>
+			<div class="sub">รายการเรียก API ทั้งหมด <span class="mono">{{totalCount}}</span> records</div>
+		</div>
+		<div class="pager">
+			<span>Rows per page</span>
+			<div class="seg seg-sm" id="pageSizeSeg">
+				<button type="button" data-size="10"{{size10On}}>10</button>
+				<button type="button" data-size="20"{{size20On}}>20</button>
+				<button type="button" data-size="50"{{size50On}}>50</button>
+				<button type="button" data-size="100"{{size100On}}>100</button>
+				<button type="button" data-size="all"{{sizeAllOn}}>All</button>
 			</div>
 		</div>
-	</form>
+	</div>
 
-	<section class="stats" aria-label="สรุปยอดรวม">
-		<div class="stat featured">
-			<div class="label"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span>Estimated Cost</div>
-			<div class="value">{{estCost}}</div>
-			<div class="trend">ค่าใช้จ่ายในช่วงที่เลือก</div>
-		</div>
-		{{statCards}}
-	</section>
+	<div class="table-scroll">
+		<table class="logs-table">
+			<thead>
+				<tr>
+					<th>Time (BKK)</th><th>Client</th><th>Account</th><th>Model</th><th>Prompt</th>
+					<th>In</th><th>Out</th><th>Cache W</th><th>Cache R</th><th>Cost</th>
+				</tr>
+			</thead>
+			<tbody id="logsTableBody">{{logRows}}</tbody>
+		</table>
+	</div>
 
-	<section class="grid-2">
-		<div class="card">
-			<div class="card-head">
-				<h2>By Model</h2>
-				{{byModelShowMore}}
-			</div>
-			<div>{{byModelHtml}}</div>
-		</div>
-		<div class="card">
-			<div class="card-head">
-				<h2>By Account</h2>
-				{{byAccountShowMore}}
-			</div>
-			<div>{{byAccountHtml}}</div>
-		</div>
-		<div class="card">
-			<div class="card-head">
-				<h2>By Client</h2>
-				{{byClientShowMore}}
-			</div>
-			<div>{{byClientHtml}}</div>
-		</div>
-	</section>
+	<div class="logs-cards" id="logsCards">{{logCards}}</div>
 
-	<section class="logs">
-		<div class="logs-head">
-			<div>
-				<h2>Count Call</h2>
-				<div class="sub">รายการเรียก API ทั้งหมด <span class="mono">{{totalCount}}</span> records</div>
-			</div>
-			<div class="pager">
-				<span>Rows per page</span>
-				<div class="seg seg-sm" id="pageSizeSeg">
-					<button type="button" data-size="10"{{size10On}}>10</button>
-					<button type="button" data-size="20"{{size20On}}>20</button>
-					<button type="button" data-size="50"{{size50On}}>50</button>
-					<button type="button" data-size="100"{{size100On}}>100</button>
-					<button type="button" data-size="all"{{sizeAllOn}}>All</button>
-				</div>
-			</div>
-		</div>
-
-		<div class="table-scroll">
-			<table class="logs-table">
-				<thead>
-					<tr>
-						<th>Time (BKK)</th><th>Client</th><th>Account</th><th>Model</th><th>Prompt</th>
-						<th>In</th><th>Out</th><th>Cache W</th><th>Cache R</th><th>Cost</th>
-					</tr>
-				</thead>
-				<tbody id="logsTableBody">{{logRows}}</tbody>
-			</table>
-		</div>
-
-		<div class="logs-cards" id="logsCards">{{logCards}}</div>
-
-		{{pagination}}
-	</section>
-
-</div>
+	{{pagination}}
+</section>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true">
 	<div class="modal-card">
@@ -196,5 +141,3 @@ const D_TODAY='{{today}}', D_MONTH='{{firstMonth}}', D_YEAR='{{firstYear}}';
 const BREAKDOWN_ALL={{breakdownAll}};
 {{clientJs}}
 </script>
-</body>
-</html>

@@ -1,0 +1,26 @@
+.insights-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-top: 4px; }
+.callout { background: linear-gradient(135deg, #FFF1E6 0%, #FFE4D2 100%); border: 1px solid var(--peach-200); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+.callout .label { font-size: 11px; color: var(--peach-500); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.callout .value { font-size: 22px; font-weight: 800; margin-top: 6px; letter-spacing: -0.02em; word-break: break-all; }
+.callout .desc { font-size: 12px; color: var(--ink-2); margin-top: 6px; line-height: 1.5; }
+.callout.anomaly { background: linear-gradient(135deg, #FEEBEC 0%, #FCCFD3 100%); border-color: #F3CACA; }
+.callout.anomaly .label { color: var(--bad); }
+.callout.good { background: linear-gradient(135deg, #E8F5EC 0%, #C9E8D2 100%); border-color: #BBDFC8; }
+.callout.good .label { color: #2F8F4A; }
+
+.prompt-list { display: flex; flex-direction: column; gap: 10px; }
+.prompt-item { padding: 12px 0; border-top: 1px solid var(--line); }
+.prompt-item:first-child { border-top: 0; padding-top: 0; }
+.prompt-item .meta { display: flex; gap: 10px; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--ink-3); font-weight: 600; }
+.prompt-item .meta .cost { color: var(--peach-500); font-weight: 700; font-family: "JetBrains Mono", monospace; margin-left: auto; }
+.prompt-item .text { font-size: 13px; color: var(--ink); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.cache-list { display: flex; flex-direction: column; gap: 8px; }
+.cache-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg); border-radius: 9px; border: 1px solid var(--line-2); }
+.cache-row .email { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
+.cache-row .ratio { font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; color: var(--bad); white-space: nowrap; }
+.cache-row .ratio.ok { color: var(--good); }
+
+@media (max-width: 1000px) {
+	.insights-grid { grid-template-columns: 1fr; }
+}

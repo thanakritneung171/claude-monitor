@@ -1,9 +1,12 @@
 import type { Env, ApiLog } from '../types';
 import { json } from '../lib/format';
 import { insertLog } from '../db/queries';
+import { getEffectiveIngestKey } from '../lib/auth';
 
 export async function handleLog(request: Request, env: Env): Promise<Response> {
-	if (request.headers.get('X-Api-Key') !== env.API_KEY) {
+	const provided = request.headers.get('X-Api-Key') ?? '';
+	const expected = await getEffectiveIngestKey(env);
+	if (!expected || provided !== expected) {
 		return json({ ok: false, error: 'Unauthorized' }, 401);
 	}
 	try {

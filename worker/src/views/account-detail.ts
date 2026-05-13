@@ -1,10 +1,10 @@
 import html from './account-detail.html';
-import sharedCss from './shared.css';
 import pageCss from './account-detail.css';
 import clientJs from './account-detail.client.js';
 
 import type { AccountDetailData } from '../db/queries';
-import type { ApiLog } from '../types';
+import type { ApiLog, User } from '../types';
+import { renderLayout } from './layout';
 import { esc, num, fmtBkk, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, modelLabel } from '../lib/badge';
 import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTimeTh, compactNum } from '../lib/account';
@@ -25,6 +25,7 @@ export interface AccountDetailRenderInput {
 	period: '24h' | '7d' | '30d' | '90d' | 'all';
 	clientFilter: string;
 	modelFilter: string;
+	user?: User;
 }
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
@@ -306,17 +307,23 @@ export function renderAccountDetail(input: AccountDetailRenderInput): string {
 	const heatmapData = JSON.stringify(data.heatmap);
 
 	const replacements: Record<string, string> = {
-		'{{sharedCss}}': sharedCss,
-		'{{pageCss}}':   pageCss,
 		'{{clientJs}}':  clientJs,
 		'{{email}}':     esc(data.email),
-		'{{titleEmail}}': esc(data.email),
 		'{{bodyHtml}}':  bodyHtml,
 		'{{tokenMix}}':  tokenMix,
 		'{{trendData}}': trendData,
 		'{{heatmapData}}': heatmapData,
 	};
-	let out = html;
-	for (const [k, v] of Object.entries(replacements)) out = out.split(k).join(v);
-	return out;
+	let content = html;
+	for (const [k, v] of Object.entries(replacements)) content = content.split(k).join(v);
+
+	return renderLayout({
+		activeNav: 'accounts',
+		user: input.user,
+		pageTitle: data.email,
+		pageSubtitle: 'Account activity & usage breakdown',
+		content,
+		pageCss,
+		title: `${data.email} — SDB AI Insight`,
+	});
 }

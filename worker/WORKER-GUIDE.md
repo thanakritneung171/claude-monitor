@@ -11,6 +11,59 @@
 
 1. [ระบบนี้คืออะไร](#1-ระบบนี้คืออะไร)
 2. [Flow การทำงาน](#2-flow-การทำงาน)
+3. [Auth setup (admin คนแรก)](#3-auth-setup-admin-คนแรก)
+
+---
+
+## 3. Auth setup (admin คนแรก)
+
+ตั้งแต่เวอร์ชัน 1.1 ทุก dashboard route ต้อง login ก่อน (ยกเว้น `/log`, `/health`, `/login`)
+
+### 3.1 สร้าง admin คนแรก (one-time)
+
+1. **สร้าง PBKDF2 hash** จากรหัสผ่านที่ต้องการ:
+
+   ```bash
+   node scripts/hash-password.mjs "MyStrongPassword123"
+   # ⇒ pbkdf2$100000$<salt-hex>$<hash-hex>
+   ```
+
+2. **เปิด `migrations/0002_auth.sql`** หา block `-- Initial admin user --` แล้ว uncomment + กรอกค่า:
+
+   ```sql
+   INSERT OR IGNORE INTO users (id, email, password_hash, role, created_at, status)
+   VALUES (
+     'admin-0001',
+     'admin@company.com',
+     'pbkdf2$100000$<paste-here>',
+     'admin',
+     strftime('%s', 'now') * 1000,
+     'active'
+   );
+   ```
+
+3. **รัน migration**:
+
+   ```bash
+   wrangler d1 execute prompt-logger --remote --file=migrations/0002_auth.sql
+   ```
+
+4. เข้า `https://your-worker.dev/login` → login → จะ redirect ไป dashboard
+
+### 3.2 เพิ่ม user เพิ่มเติม
+
+หลังมี admin แล้ว ไปที่ `/users` ในหน้า dashboard กดปุ่ม **Invite user** ระบบจะสร้างรหัสผ่านชั่วคราวแสดงครั้งเดียวให้ส่งให้ user ใหม่
+
+### 3.3 Roles
+
+| Role | สิทธิ์ |
+|---|---|
+| `admin` | จัดการ users, rotate ingest key, ทุกหน้า |
+| `viewer` | อ่านอย่างเดียว — `/users` และ `/settings/key-rotate` ถูกปิด |
+
+### 3.4 Rotate ingest API key
+
+ไปที่ `/settings` (ต้องเป็น admin) → กด **Rotate key** → คัดลอกค่าใหม่ไปอัปเดตที่ `proxy/config.py` แล้ว restart proxy
 
 ---
 

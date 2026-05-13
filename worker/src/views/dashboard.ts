@@ -2,23 +2,16 @@ import html from './dashboard.html';
 import css from './dashboard.css';
 import clientJs from './dashboard.client.js';
 
-import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount } from '../types';
+import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, User } from '../types';
 import { esc, num, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, accountBadge, modelLabel } from '../lib/badge';
+import { renderLayout } from './layout';
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
 const TOP_N = 5;
 
 const arrowL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>';
 const arrowR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
-
-const statSvg: Record<string, string> = {
-	'svg-api': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
-	'svg-in':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
-	'svg-out': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
-	'svg-cw':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>',
-	'svg-cr':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>',
-};
 
 function pageBtn(p: number, cur: number, urlFn: (p: number) => string): string {
 	if (p === cur) return `<button class="page-btn active" disabled>${p}</button>`;
@@ -98,17 +91,17 @@ function barRowsHtml(items: BarItem[]): string {
 
 function renderStatCards(totals: Totals): string {
 	const cards = [
-		{ label: 'API Calls',     value: num(totals.total),           sub: 'requests',  icon: 'svg-api' },
-		{ label: 'Input Tokens',  value: num(totals.totalInput),      sub: 'in prompts', icon: 'svg-in' },
-		{ label: 'Output Tokens', value: num(totals.totalOutput),     sub: 'from model', icon: 'svg-out' },
-		{ label: 'Cache Write',   value: num(totals.totalCacheCreate),sub: 'tokens',     icon: 'svg-cw' },
-		{ label: 'Cache Read',    value: num(totals.totalCacheRead),  sub: 'tokens hit', icon: 'svg-cr' },
+		{ key: 'g-count', label: 'COUNT CALL',   value: num(totals.total) },
+		{ key: 'g-in',    label: 'INPUT TOKEN',  value: num(totals.totalInput) },
+		{ key: 'g-out',   label: 'OUTPUT TOKEN', value: num(totals.totalOutput) },
+		{ key: 'g-cw',    label: 'CACHE WRITE',  value: num(totals.totalCacheCreate) },
+		{ key: 'g-cr',    label: 'CACHE READ',   value: num(totals.totalCacheRead) },
+		{ key: 'g-cost',  label: 'EST. COST',    value: '$' + num(totals.totalCost, 4) },
 	];
 	return cards.map(s => `
-		<div class="stat">
-			<div class="label"><span class="icon">${statSvg[s.icon]}</span>${s.label}</div>
+		<div class="stat ${s.key}">
+			<div class="label">${s.label}</div>
 			<div class="value">${s.value}</div>
-			<div class="trend">${s.sub}</div>
 		</div>`).join('');
 }
 
@@ -188,6 +181,7 @@ export interface RenderInput {
 	todayStr: string;
 	firstMonthStr: string;
 	firstYearStr: string;
+	user?: User;
 }
 
 export function renderDashboard(d: RenderInput): string {
@@ -212,7 +206,6 @@ export function renderDashboard(d: RenderInput): string {
 	});
 
 	const replacements: Record<string, string> = {
-		'{{css}}': css,
 		'{{clientJs}}': clientJs,
 		'{{periodDailyOn}}':   d.filters.period === 'daily'   ? ' class="on"' : '',
 		'{{periodMonthlyOn}}': d.filters.period === 'monthly' ? ' class="on"' : '',
@@ -228,7 +221,6 @@ export function renderDashboard(d: RenderInput): string {
 		'{{clientOpts}}':  clientOpts,
 		'{{perPageVal}}':  esc(perPageVal),
 		'{{exportUrl}}':   buildExportUrl(d.filters),
-		'{{estCost}}':     '$' + num(d.totals.totalCost, 4),
 		'{{statCards}}':   renderStatCards(d.totals),
 		'{{byModelShowMore}}':   showMoreBtn('model',   modelItems.length),
 		'{{byAccountShowMore}}': showMoreBtn('account', accountItems.length),
@@ -251,9 +243,18 @@ export function renderDashboard(d: RenderInput): string {
 		'{{breakdownAll}}': breakdownAll,
 	};
 
-	let out = html;
+	let content = html;
 	for (const [key, value] of Object.entries(replacements)) {
-		out = out.split(key).join(value);
+		content = content.split(key).join(value);
 	}
-	return out;
+
+	return renderLayout({
+		activeNav: 'dashboard',
+		user: d.user,
+		pageTitle: 'Dashboard Overview',
+		pageSubtitle: 'Monitor your AI models and system performance',
+		content,
+		pageCss: css,
+		title: 'SDB AI Insight — Dashboard',
+	});
 }
