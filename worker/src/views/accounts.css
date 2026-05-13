@@ -1,0 +1,70 @@
+.stats { margin-top: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+.stat .label { font-size: 11px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.stat .value { font-size: clamp(22px, 2vw, 28px); font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; font-variant-numeric: tabular-nums; }
+.stat.featured { background: linear-gradient(135deg, #FFF1E6 0%, #FFE4D2 100%); border-color: var(--peach-200); }
+.stat.featured .value { background: linear-gradient(135deg, var(--peach-500), #D45A2A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.stat .delta { font-size: 11px; color: var(--ink-3); margin-top: 6px; font-weight: 500; }
+.stat .delta.up { color: var(--good); }
+
+.toolbar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar .input-wrap { flex: 1 1 280px; }
+
+.view-toggle { display: inline-flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 9px; padding: 3px; gap: 3px; height: 36px; }
+.view-toggle button { width: 36px; height: 28px; border: 0; background: transparent; border-radius: 7px; cursor: pointer; display: grid; place-items: center; color: var(--ink-2); transition: all 0.15s; }
+.view-toggle button:hover { color: var(--ink); }
+.view-toggle button.on { background: white; color: var(--peach-500); box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+.view-toggle svg { width: 14px; height: 14px; }
+
+/* Page title row */
+.page-head { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+.page-head h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); line-height: 1; margin: 0; }
+.page-head .sub { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
+.page-head .actions { display: flex; gap: 8px; }
+
+/* Grid */
+.accounts-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.acct-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); cursor: pointer; display: flex; flex-direction: column; gap: 14px; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s; text-decoration: none; color: inherit; }
+.acct-card:hover { transform: translateY(-2px); border-color: var(--peach-300); box-shadow: 0 1px 0 rgba(180, 120, 70, 0.06), 0 16px 32px -12px rgba(244, 121, 72, 0.25); }
+.acct-card .top { display: flex; align-items: center; gap: 12px; }
+.acct-card .email { font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.acct-card .domain { font-size: 11px; color: var(--ink-3); font-weight: 500; margin-top: 2px; }
+.acct-card .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.acct-card .metric .lbl { font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 3px; }
+.acct-card .metric .val { font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.01em; line-height: 1; font-variant-numeric: tabular-nums; }
+.acct-card .metric .val.money { font-family: "JetBrains Mono", monospace; background: linear-gradient(135deg, var(--peach-500), #D45A2A); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.acct-card .footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
+.acct-card .last-seen { font-size: 11px; color: var(--ink-3); font-weight: 500; display: flex; align-items: center; gap: 5px; }
+
+.pulse-mini { width: 6px; height: 6px; border-radius: 50%; background: var(--good); display: inline-block; }
+.pulse-mini.idle { background: var(--peach-300); }
+.pulse-mini.cold { background: #CFC6BB; }
+
+.top-models { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* List view */
+.accounts-table { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; display: none; }
+body.list-mode .accounts-grid { display: none; }
+body.list-mode .accounts-table { display: block; }
+.accounts-table table { width: 100%; border-collapse: collapse; min-width: 900px; }
+.accounts-table th { text-align: left; font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 14px; background: var(--bg-soft); white-space: nowrap; }
+.accounts-table th:first-child { padding-left: 20px; }
+.accounts-table th:last-child { padding-right: 20px; text-align: right; }
+.accounts-table td { padding: 14px; border-top: 1px solid var(--line); font-size: 13px; vertical-align: middle; }
+.accounts-table td:first-child { padding-left: 20px; }
+.accounts-table td:last-child { padding-right: 20px; text-align: right; }
+.accounts-table tbody tr { cursor: pointer; transition: background 0.12s; }
+.accounts-table tbody tr:hover { background: var(--bg-soft); }
+.acct-cell { display: flex; align-items: center; gap: 10px; }
+.acct-cell .avatar { width: 32px; height: 32px; border-radius: 10px; font-size: 12px; }
+.acct-cell .email-lg { font-weight: 700; color: var(--ink); }
+.acct-cell .email-sm { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.acct-cell .col { display: flex; flex-direction: column; min-width: 0; }
+.acct-cell .col > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.money-cell { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 14px; color: var(--ink); }
+.table-scroll-wrap { overflow-x: auto; }
+
+.empty-state { padding: 48px 20px; text-align: center; color: var(--ink-3); font-size: 14px; }
+
+@media (max-width: 1000px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) { .stats { grid-template-columns: 1fr 1fr; } .accounts-grid { grid-template-columns: 1fr; } }

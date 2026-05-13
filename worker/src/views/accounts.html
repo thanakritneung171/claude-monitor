@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accounts — SDB AI Insight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>{{sharedCss}}{{pageCss}}</style>
+</head>
+<body>
+<div class="wrap">
+
+	<header class="topbar">
+		<div class="brand">
+			<div class="logo" aria-hidden="true">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="12 2 22 8 22 16 12 22 2 16 2 8 12 2"></polygon>
+				</svg>
+			</div>
+			<div>
+				<h1>SDB AI Insight</h1>
+				<div class="sub">
+					<span class="dot live-dot"></span>
+					<span>mitmproxy</span>
+					<span class="dot"></span>
+					<span>{{activeAccounts}} accounts ออนไลน์</span>
+					<span class="dot"></span>
+					<span>Asia/Bangkok</span>
+				</div>
+			</div>
+		</div>
+		<nav class="topnav">
+			<a href="/">Dashboard</a>
+			<a href="/accounts" class="on">Accounts</a>
+		</nav>
+		<div class="refresh-pill">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+				<polyline points="23 4 23 10 17 10"></polyline>
+				<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+			</svg>
+			<span>อัปเดตล่าสุด <strong class="mono" id="lastUpdate">--:--:--</strong></span>
+		</div>
+	</header>
+
+	<div class="page-head">
+		<div>
+			<h1>Accounts</h1>
+			<div class="sub">รายชื่อ account ทั้งหมดที่เชื่อมต่อ Claude API พร้อมสรุปการใช้งาน</div>
+		</div>
+		<div class="actions">
+			<a href="{{exportUrl}}" class="btn" download>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+				Export
+			</a>
+		</div>
+	</div>
+
+	<section class="stats">
+		<div class="stat featured">
+			<div class="label">Total Spend ({{periodLabel}})</div>
+			<div class="value">{{totalSpend}}</div>
+			<div class="delta">รวมในช่วงที่เลือก</div>
+		</div>
+		<div class="stat">
+			<div class="label">Active Accounts</div>
+			<div class="value">{{activeAccounts}} <span style="font-size:14px;color:var(--ink-3);font-weight:500;">/ {{totalAccounts}}</span></div>
+			<div class="delta">active ใน 24 ชม.</div>
+		</div>
+		<div class="stat">
+			<div class="label">Total API Calls</div>
+			<div class="value">{{totalCalls}}</div>
+			<div class="delta">เฉลี่ย {{avgCallsPerAcct}}/account</div>
+		</div>
+		<div class="stat">
+			<div class="label">Avg Cost / Account</div>
+			<div class="value">{{avgCost}}</div>
+			<div class="delta">รวม {{totalAccounts}} accounts</div>
+		</div>
+	</section>
+
+	<section class="toolbar">
+		<div class="input-wrap">
+			<span class="icon-l">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+			</span>
+			<input class="input" id="searchInput" placeholder="ค้นหา email หรือ domain…" autocomplete="off">
+		</div>
+		<div class="select-wrap" style="width:170px;">
+			<select class="select" id="sortSelect">
+				<option value="cost">เรียงตาม: Cost</option>
+				<option value="calls">เรียงตาม: Calls</option>
+				<option value="lastSeen">เรียงตาม: Last seen</option>
+				<option value="email">เรียงตาม: Email</option>
+			</select>
+		</div>
+		<div class="seg" id="periodSeg">
+			<a href="?period=7d"{{period7dOn}}>7d</a>
+			<a href="?period=30d"{{period30dOn}}>30d</a>
+			<a href="?period=90d"{{period90dOn}}>90d</a>
+			<a href="?period=all"{{periodAllOn}}>All</a>
+		</div>
+		<div class="view-toggle" id="viewToggle" style="margin-left:auto;">
+			<button class="on" data-view="grid" title="Grid">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+			</button>
+			<button data-view="list" title="List">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+			</button>
+		</div>
+	</section>
+
+	<section class="accounts-grid" id="grid">{{gridCards}}</section>
+
+	<section class="accounts-table">
+		<div class="table-scroll-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>Account</th>
+						<th>Calls</th>
+						<th>Tokens</th>
+						<th>Top Model</th>
+						<th>Last seen</th>
+						<th>Total cost</th>
+					</tr>
+				</thead>
+				<tbody id="tableBody">{{tableRows}}</tbody>
+			</table>
+		</div>
+	</section>
+
+	{{emptyState}}
+
+</div>
+
+<script>
+const ACCOUNTS_DATA = {{accountsData}};
+{{clientJs}}
+</script>
+</body>
+</html>

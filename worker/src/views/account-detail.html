@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{titleEmail}} — SDB AI Insight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>{{sharedCss}}{{pageCss}}</style>
+</head>
+<body>
+<div class="wrap">
+
+	<header class="topbar">
+		<div class="brand">
+			<div class="logo" aria-hidden="true">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="12 2 22 8 22 16 12 22 2 16 2 8 12 2"></polygon>
+				</svg>
+			</div>
+			<div>
+				<h1>SDB AI Insight</h1>
+				<div class="sub">
+					<span class="dot live-dot"></span>
+					<span>mitmproxy</span>
+					<span class="dot"></span>
+					<span>Account view</span>
+				</div>
+			</div>
+		</div>
+		<nav class="topnav">
+			<a href="/">Dashboard</a>
+			<a href="/accounts" class="on">Accounts</a>
+		</nav>
+	</header>
+
+	<nav class="breadcrumb">
+		<a href="/accounts">
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+			Accounts
+		</a>
+		<span class="sep">/</span>
+		<span class="current">{{email}}</span>
+	</nav>
+
+	{{bodyHtml}}
+
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+	<div class="modal-card">
+		<div class="modal-head">
+			<h3>Prompt Detail</h3>
+			<button class="modal-close" id="modalClose">✕</button>
+		</div>
+		<div class="modal-body" id="modalBody"></div>
+	</div>
+</div>
+
+<script>
+const TOKEN_MIX = {{tokenMix}};
+const TREND_DATA = {{trendData}};
+const HEATMAP_DATA = {{heatmapData}};
+{{clientJs}}
+</script>
+</body>
+</html>

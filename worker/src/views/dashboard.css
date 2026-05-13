@@ -46,6 +46,11 @@ body {
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(111, 180, 138, 0.18); } 50% { box-shadow: 0 0 0 8px rgba(111, 180, 138, 0.05); } }
 .refresh-pill { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--ink-2); font-weight: 500; }
 
+.topnav { display: flex; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin-left: auto; }
+.topnav a { padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink-2); text-decoration: none; transition: all 0.15s; }
+.topnav a:hover { background: var(--peach-50); color: var(--ink); }
+.topnav a.on { background: linear-gradient(180deg, var(--peach-300), var(--peach-400)); color: white; box-shadow: 0 3px 8px -2px rgba(244, 121, 72, 0.35); }
+
 /* Filters */
 .filters { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
 .filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }

@@ -6,6 +6,8 @@ import { handleLog } from './routes/log';
 import { handleHealth } from './routes/health';
 import { handleDashboard } from './routes/dashboard';
 import { handleExport } from './routes/export';
+import { handleAccounts } from './routes/accounts';
+import { handleAccountDetail } from './routes/account-detail';
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
@@ -18,10 +20,12 @@ export default {
 			});
 		}
 
-		if (pathname === '/log'    && request.method === 'POST') return handleLog(request, env);
-		if (pathname === '/health')                              return handleHealth();
-		if (pathname === '/'       && request.method === 'GET')  return handleDashboard(url, env);
-		if (pathname === '/export' && request.method === 'GET')  return handleExport(url, env);
+		if (pathname === '/log'      && request.method === 'POST') return handleLog(request, env);
+		if (pathname === '/health')                                return handleHealth();
+		if (pathname === '/'         && request.method === 'GET')  return handleDashboard(url, env);
+		if (pathname === '/accounts' && request.method === 'GET')  return handleAccounts(url, env);
+		if (pathname === '/account'  && request.method === 'GET')  return handleAccountDetail(url, env);
+		if (pathname === '/export'   && request.method === 'GET')  return handleExport(url, env);
 
 		return json({ ok: false, error: 'Not Found' }, 404);
 	},
