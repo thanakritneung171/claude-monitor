@@ -8,6 +8,17 @@ import type { ApiLog } from '../types';
 import { esc, num, fmtBkk, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, modelLabel } from '../lib/badge';
 import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTimeTh, compactNum } from '../lib/account';
+import { todayBkk, firstOfYearBkk } from '../lib/date';
+
+function dashboardYearlyUrl(email: string): string {
+	const params = new URLSearchParams({
+		period: 'yearly',
+		date_from: firstOfYearBkk(),
+		date_to: todayBkk(),
+		account: email,
+	});
+	return '/?' + params.toString();
+}
 
 export interface AccountDetailRenderInput {
 	data: AccountDetailData;
@@ -152,7 +163,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 			</div>
 		</div>
 		<div class="actions">
-			<a href="/?account=${encodeURIComponent(d.email)}" class="btn primary">ดู Logs ทั้งหมด</a>
+			<a href="${dashboardYearlyUrl(d.email)}" class="btn primary">ดู Logs ทั้งหมด</a>
 		</div>
 	</section>
 
@@ -264,7 +275,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 	<div class="prompts-table">
 		<div class="table-head">
 			<h3>Recent activity</h3>
-			<a href="/?account=${encodeURIComponent(d.email)}" class="btn">ดูทั้งหมด</a>
+			<a href="${dashboardYearlyUrl(d.email)}" class="btn">ดูทั้งหมด</a>
 		</div>
 		<div class="scroll">
 			<table>
