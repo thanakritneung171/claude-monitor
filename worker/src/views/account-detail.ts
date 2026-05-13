@@ -18,6 +18,32 @@ export interface AccountDetailRenderInput {
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
 
+const TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+function fmtThShort(isoDay: string): string {
+	const [, m, dd] = isoDay.split('-');
+	const mi = Math.max(0, Math.min(11, parseInt(m, 10) - 1));
+	return `${parseInt(dd, 10)} ${TH_MONTH_SHORT[mi]}`;
+}
+
+function trendXLabels(trend: { day: string; cost: number }[]): string {
+	if (trend.length === 0) return '';
+	const target = Math.min(5, trend.length);
+	const idxs: number[] = [];
+	if (trend.length === 1) {
+		idxs.push(0);
+	} else {
+		for (let i = 0; i < target; i++) {
+			idxs.push(Math.round((i / (target - 1)) * (trend.length - 1)));
+		}
+	}
+	const seen = new Set<number>();
+	return `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin-top:6px;">${
+		idxs.filter(i => { if (seen.has(i)) return false; seen.add(i); return true; })
+			.map(i => `<span>${esc(fmtThShort(trend[i].day))}</span>`).join('')
+	}</div>`;
+}
+
 const STAT_SVG = {
 	cost: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
 	calls: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
@@ -178,6 +204,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 		<div class="card">
 			<div class="card-head"><h2>Cost over time</h2><span class="count">${d.costTrend.length} days</span></div>
 			<svg id="trend" viewBox="0 0 600 200" preserveAspectRatio="none" class="spark-wrap"></svg>
+			${trendXLabels(d.costTrend)}
 		</div>
 		<div class="card">
 			<div class="card-head"><h2>By Model</h2><span class="count">${d.byModel.length} models</span></div>
