@@ -16,48 +16,67 @@ document.querySelectorAll('#pageSizeSeg button').forEach(b => b.addEventListener
 
 // Modal
 const modal = document.getElementById('modal');
-function openModal(text) {
-	document.getElementById('modalBody').textContent = text;
+const modalTitle = document.getElementById('modalTitle');
+const modalBody = document.getElementById('modalBody');
+
+function openPromptModal(text) {
+	modalTitle.textContent = 'Full Prompt';
+	modalBody.classList.add('prompt-body');
+	modalBody.textContent = text;
 	modal.classList.add('open');
 }
+
+function escapeHtml(s) {
+	return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
+
+function openBreakdownModal(cat) {
+	const items = BREAKDOWN_ALL[cat] || [];
+	const titleMap = { model: 'All Models', account: 'All Accounts', client: 'All Clients' };
+	modalTitle.textContent = titleMap[cat] || 'All';
+	modalBody.classList.remove('prompt-body');
+	if (items.length === 0) {
+		modalBody.innerHTML = '<div style="color:var(--ink-3);text-align:center;padding:20px;">ไม่มีข้อมูล</div>';
+	} else {
+		const max = Math.max.apply(null, items.map(i => i.cost || 0).concat([1]));
+		modalBody.innerHTML = items.map((it, i) => {
+			const color = BAR_COLORS[i % BAR_COLORS.length];
+			const pct = Math.max(2, ((it.cost || 0) / max) * 100);
+			return '<div class="bar-row">' +
+				'<div class="name"><span class="swatch" style="background:' + color + '"></span>' + escapeHtml(it.name) + '</div>' +
+				'<div class="num"><span>' + it.n.toLocaleString('en-US') + ' calls</span><strong>$' + (it.cost || 0).toFixed(4) + '</strong></div>' +
+				'<div class="bar-track"><div class="bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + color + '"></div></div>' +
+			'</div>';
+		}).join('');
+	}
+	modal.classList.add('open');
+}
+
 function closeModal() { modal.classList.remove('open'); }
 document.getElementById('modalClose').addEventListener('click', closeModal);
 modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 document.querySelectorAll('#logsTableBody tr[data-full]').forEach(tr => {
-	tr.addEventListener('click', () => openModal(tr.dataset.full));
+	tr.addEventListener('click', () => openPromptModal(tr.dataset.full));
 });
 document.querySelectorAll('#logsCards .log-card[data-full]').forEach(c => {
-	c.addEventListener('click', () => openModal(c.dataset.full));
+	c.addEventListener('click', () => openPromptModal(c.dataset.full));
 });
 
-// Animate bar fills
+document.querySelectorAll('.show-more').forEach(btn => {
+	btn.addEventListener('click', () => openBreakdownModal(btn.dataset.cat));
+});
+
+// Animate bar fills to their target width
 requestAnimationFrame(() => {
-	document.querySelectorAll('.bar-fill').forEach(b => { b.style.width = (b.dataset.pct || '0') + '%'; });
-});
-
-// Trend chart
-(function () {
-	const svg = document.getElementById('trendChart');
-	if (!svg || !TREND_DATA.length) return;
-	const w = 600, h = 200, pad = 16;
-	const maxC = Math.max.apply(null, TREND_DATA);
-	const range = maxC > 0 ? maxC : 1;
-	const n = TREND_DATA.length;
-	const pts = TREND_DATA.map((c, i) => {
-		const x = pad + (n === 1 ? (w - pad * 2) / 2 : (i / (n - 1)) * (w - pad * 2));
-		const y = h - pad - (c / range) * (h - pad * 2);
-		return [x, y];
+	document.querySelectorAll('.bar-row > .bar-track .bar-fill').forEach(b => {
+		const pct = b.dataset.pct;
+		if (pct) b.style.width = pct + '%';
 	});
-	const path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
-	const area = path + ' L' + pts[pts.length - 1][0] + ',' + (h - pad) + ' L' + pts[0][0] + ',' + (h - pad) + ' Z';
-	svg.innerHTML =
-		'<defs><linearGradient id="grad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FF9466" stop-opacity="0.4"/><stop offset="100%" stop-color="#FFB088" stop-opacity="0"/></linearGradient></defs>' +
-		'<path d="' + area + '" fill="url(#grad)"/>' +
-		'<path d="' + path + '" fill="none" stroke="#F47948" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
-		pts.map(p => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="3.5" fill="white" stroke="#F47948" stroke-width="2"/>').join('');
-})();
+});
 
 // Live clock (Asia/Bangkok)
 function tick() {

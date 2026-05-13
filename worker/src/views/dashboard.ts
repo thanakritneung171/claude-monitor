@@ -6,6 +6,9 @@ import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount } from '../t
 import { esc, num, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, accountBadge, modelLabel } from '../lib/badge';
 
+const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
+const TOP_N = 5;
+
 const arrowL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>';
 const arrowR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
 
@@ -77,15 +80,18 @@ function renderPagination(filters: Filters, totalCount: number, perPageVal: stri
 		</div>`;
 }
 
-function barRows(items: { name: string; n: number; cost: number; v: number }[]): string {
+interface BarItem { name: string; n: number; cost: number; }
+
+function barRowsHtml(items: BarItem[]): string {
 	if (items.length === 0) return `<div style="color:var(--ink-3);font-size:13px;padding:8px 0">ไม่มีข้อมูล</div>`;
-	const max = Math.max(...items.map(i => i.v), 1);
+	const max = Math.max(...items.map(i => i.cost), 1);
 	return items.map((it, i) => {
-		const pct = Math.max(2, (it.v / max) * 100);
+		const color = BAR_COLORS[i % BAR_COLORS.length];
+		const pct = Math.max(2, (it.cost / max) * 100);
 		return `<div class="bar-row">
-			<div class="name"><span class="swatch" style="background:var(--peach-${400 - (i % 3) * 100})"></span>${esc(it.name)}</div>
+			<div class="name"><span class="swatch" style="background:${color}"></span>${esc(it.name)}</div>
 			<div class="num"><span>${num(it.n)} calls</span><strong>$${num(it.cost, 4)}</strong></div>
-			<div class="bar-track"><div class="bar-fill" data-pct="${pct.toFixed(1)}" style="width:0%"></div></div>
+			<div class="bar-track"><div class="bar-fill" data-pct="${pct.toFixed(1)}" style="width:0%;background:${color}"></div></div>
 		</div>`;
 	}).join('');
 }
@@ -163,6 +169,11 @@ function buildExportUrl(filters: Filters): string {
 	return '/export?' + p.toString();
 }
 
+function showMoreBtn(cat: 'model' | 'account' | 'client', total: number): string {
+	if (total <= TOP_N) return '';
+	return `<button type="button" class="show-more" data-cat="${cat}">ดูทั้งหมด →</button>`;
+}
+
 export interface RenderInput {
 	rows: ApiLog[];
 	totalCount: number;
@@ -186,12 +197,19 @@ export function renderDashboard(d: RenderInput): string {
 	const accountOpts = d.allAccounts.map(a => `<option value="${esc(a)}"${d.filters.account === a ? ' selected' : ''}>${esc(a || '—')}</option>`).join('');
 	const clientOpts  = d.allClients.map(c  => `<option value="${esc(c)}"${d.filters.client  === c ? ' selected' : ''}>${esc(c)}</option>`).join('');
 
-	const byModelHtml   = barRows(d.byModel.map(m => ({ name: modelLabel(m.model), n: m.n, cost: m.cost ?? 0, v: m.cost ?? m.n })));
-	const byAccountHtml = barRows(d.byAccount.map(a => ({ name: a.account_email || '—', n: a.n, cost: a.cost ?? 0, v: a.cost ?? a.n })));
-	const byClientHtml  = barRows(d.byClient.map(c => ({ name: c.client, n: c.n, cost: c.cost ?? 0, v: c.cost ?? c.n })));
+	const modelItems:   BarItem[] = d.byModel.map(m   => ({ name: modelLabel(m.model),       n: m.n, cost: m.cost ?? 0 }));
+	const accountItems: BarItem[] = d.byAccount.map(a => ({ name: a.account_email || '—',   n: a.n, cost: a.cost ?? 0 }));
+	const clientItems:  BarItem[] = d.byClient.map(c  => ({ name: c.client,                  n: c.n, cost: c.cost ?? 0 }));
 
-	const trendData = JSON.stringify(d.rows.slice().reverse().map(r => r.cost_usd));
-	const trendCount = d.rows.length;
+	const byModelHtml   = barRowsHtml(modelItems.slice(0, TOP_N));
+	const byAccountHtml = barRowsHtml(accountItems.slice(0, TOP_N));
+	const byClientHtml  = barRowsHtml(clientItems.slice(0, TOP_N));
+
+	const breakdownAll = JSON.stringify({
+		model: modelItems,
+		account: accountItems,
+		client: clientItems,
+	});
 
 	const replacements: Record<string, string> = {
 		'{{css}}': css,
@@ -212,14 +230,12 @@ export function renderDashboard(d: RenderInput): string {
 		'{{exportUrl}}':   buildExportUrl(d.filters),
 		'{{estCost}}':     '$' + num(d.totals.totalCost, 4),
 		'{{statCards}}':   renderStatCards(d.totals),
-		'{{byModelCount}}':   `${num(d.byModel.length)} model${d.byModel.length === 1 ? '' : 's'}`,
-		'{{byAccountCount}}': `${num(d.byAccount.length)} account${d.byAccount.length === 1 ? '' : 's'}`,
-		'{{byClientCount}}':  `${num(d.byClient.length)} client${d.byClient.length === 1 ? '' : 's'}`,
+		'{{byModelShowMore}}':   showMoreBtn('model',   modelItems.length),
+		'{{byAccountShowMore}}': showMoreBtn('account', accountItems.length),
+		'{{byClientShowMore}}':  showMoreBtn('client',  clientItems.length),
 		'{{byModelHtml}}':   byModelHtml,
 		'{{byAccountHtml}}': byAccountHtml,
 		'{{byClientHtml}}':  byClientHtml,
-		'{{trendCount}}':    num(trendCount),
-		'{{trendPlural}}':   trendCount === 1 ? '' : 's',
 		'{{totalCount}}':    num(d.totalCount),
 		'{{size10On}}':  perPageVal === '10'  ? ' class="on"' : '',
 		'{{size20On}}':  perPageVal === '20'  ? ' class="on"' : '',
@@ -232,7 +248,7 @@ export function renderDashboard(d: RenderInput): string {
 		'{{today}}':      d.todayStr,
 		'{{firstMonth}}': d.firstMonthStr,
 		'{{firstYear}}':  d.firstYearStr,
-		'{{trendData}}':  trendData,
+		'{{breakdownAll}}': breakdownAll,
 	};
 
 	let out = html;
