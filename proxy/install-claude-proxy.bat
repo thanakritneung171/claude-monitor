@@ -20,9 +20,37 @@ if (-not (Test-Path $caCert)) {
             return
         }
         pip install mitmproxy
+
         if (-not (Get-Command mitmdump -ErrorAction SilentlyContinue)) {
-            Write-Error "Failed to install mitmproxy. Run 'pip install mitmproxy' manually, then re-run."
-            return
+            # pip's Scripts dir often isn't on PATH (Microsoft Store Python installs to %APPDATA%\Python\Python3xx\Scripts).
+            # Probe both global and per-user Scripts dirs, then add to current session + persistent User PATH.
+            $probe = "import sysconfig, os; print(sysconfig.get_path('scripts')); print(sysconfig.get_path('scripts', os.name + '_user'))"
+            $dirs = @()
+            try { $dirs = (& python -c $probe 2>$null) -split "`r?`n" | Where-Object { $_.Trim() } } catch {}
+
+            $scriptsDir = $null
+            foreach ($d in $dirs) {
+                $d = $d.Trim()
+                if (Test-Path (Join-Path $d 'mitmdump.exe')) {
+                    $scriptsDir = $d
+                    break
+                }
+            }
+
+            if ($scriptsDir) {
+                Write-Host "  Found mitmdump in $scriptsDir - adding to PATH..." -ForegroundColor Yellow
+                $env:PATH = "$scriptsDir;$env:PATH"
+                $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+                if (-not $userPath) { $userPath = '' }
+                if (";$userPath;" -notlike "*;$scriptsDir;*") {
+                    [Environment]::SetEnvironmentVariable('PATH', "$scriptsDir;$userPath", 'User')
+                }
+            }
+
+            if (-not (Get-Command mitmdump -ErrorAction SilentlyContinue)) {
+                Write-Error "Failed to install mitmproxy. Run 'pip install mitmproxy' manually, then re-run."
+                return
+            }
         }
     }
 
