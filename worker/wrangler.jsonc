@@ -12,5 +12,8 @@
 			"database_name": "prompt-logger",
 			"database_id": "e2621e12-df8f-49ac-9514-b1c14cf0c3c5"
 		}
+	],
+	"rules": [
+		{ "type": "Text", "globs": ["**/*.html", "**/*.css", "**/*.client.js"], "fallthrough": true }
 	]
 }
