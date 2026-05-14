@@ -75,7 +75,7 @@ function renderPagination(filters: Filters, totalCount: number, perPageVal: stri
 
 interface BarItem { name: string; n: number; cost: number; }
 
-function barRowsHtml(items: BarItem[], style: 'default' | 'model' | 'client' = 'default', colorMap?: Map<string, string>): string {
+function barRowsHtml(items: BarItem[], style: 'default' | 'model' | 'client' = 'default', colorMap?: Map<string, string>, linkFn?: (name: string) => string): string {
 	if (items.length === 0) return `<div style="color:var(--ink-3);font-size:13px;padding:8px 0">ไม่มีข้อมูล</div>`;
 	const max = Math.max(...items.map(i => i.cost), 1);
 	return items.map((it, i) => {
@@ -92,9 +92,10 @@ function barRowsHtml(items: BarItem[], style: 'default' | 'model' | 'client' = '
 			nameHtml = `<span class="swatch" style="background:${color}"></span>${esc(it.name)}`;
 		}
 		const pct = Math.max(2, (it.cost / max) * 100);
+		const linkBtn = linkFn && it.name !== '—' ? `<a href="${linkFn(it.name)}" class="bar-link-btn">ดูรายละเอียด →</a>` : '';
 		return `<div class="bar-row">
 			<div class="name">${nameHtml}</div>
-			<div class="num"><span>${num(it.n)} calls</span><strong>$${num(it.cost, 4)}</strong></div>
+			<div class="num"><span>${num(it.n)} calls</span><strong>$${num(it.cost, 4)}</strong>${linkBtn}</div>
 			<div class="bar-track"><div class="bar-fill" data-pct="${pct.toFixed(1)}" style="width:0%;background:${color}"></div></div>
 		</div>`;
 	}).join('');
@@ -219,7 +220,8 @@ export function renderDashboard(d: RenderInput): string {
 	const cColorMap = buildColorMap(allClientNames, CLIENT_DARK);
 
 	const byModelHtml   = barRowsHtml(modelItems.slice(0, TOP_N), 'model',  mColorMap);
-	const byAccountHtml = barRowsHtml(accountItems.slice(0, TOP_N));
+	const byAccountHtml = barRowsHtml(accountItems.slice(0, TOP_N), 'default', undefined,
+		(email) => `/account?email=${encodeURIComponent(email)}`);
 	const byClientHtml  = barRowsHtml(clientItems.slice(0, TOP_N), 'client', cColorMap);
 
 	const breakdownAll = JSON.stringify({

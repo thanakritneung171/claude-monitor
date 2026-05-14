@@ -52,9 +52,12 @@ function openBreakdownModal(cat) {
 				nameHtml = '<span class="swatch" style="background:' + color + '"></span>' + escapeHtml(it.name);
 			}
 			const pct = Math.max(2, ((it.cost || 0) / max) * 100);
+			var linkBtn = (cat === 'account' && it.name && it.name !== '—')
+				? '<a href="/account?email=' + encodeURIComponent(it.name) + '" class="bar-link-btn">ดูรายละเอียด →</a>'
+				: '';
 			return '<div class="bar-row">' +
 				'<div class="name">' + nameHtml + '</div>' +
-				'<div class="num"><span>' + it.n.toLocaleString('en-US') + ' calls</span><strong>$' + (it.cost || 0).toFixed(4) + '</strong></div>' +
+				'<div class="num"><span>' + it.n.toLocaleString('en-US') + ' calls</span><strong>$' + (it.cost || 0).toFixed(4) + '</strong>' + linkBtn + '</div>' +
 				'<div class="bar-track"><div class="bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + color + '"></div></div>' +
 			'</div>';
 		}).join('');

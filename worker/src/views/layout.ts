@@ -5,6 +5,7 @@ import sharedCss from './shared.css';
 
 import type { User } from '../types';
 import { esc } from '../lib/format';
+import { LOGO_DATA_URL } from '../lib/logo';
 
 export type NavKey =
 	| 'dashboard'
@@ -40,6 +41,7 @@ export function renderSidebar(activeNav: NavKey, user?: User): string {
 	out = out.split('{{userEmail}}').join(esc(email));
 	out = out.split('{{userInitial}}').join(esc(initial));
 	out = out.split('{{userRole}}').join(esc(role));
+	out = out.split('{{logoDataUrl}}').join(LOGO_DATA_URL);
 	return out;
 }
 

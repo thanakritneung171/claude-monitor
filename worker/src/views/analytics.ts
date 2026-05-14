@@ -134,7 +134,15 @@ function heatmapHtml(cells: HeatmapCell[]): string {
 		if (ratio < 0.8) return 'var(--peach-400)';
 		return 'var(--peach-500)';
 	}
-	const rows: string[] = [];
+
+	// Hour header row
+	const hourRow: string[] = [`<div></div>`];
+	for (let h = 0; h < 24; h++) {
+		const label = h % 4 === 0 ? String(h).padStart(2, '0') + ':00' : '';
+		hourRow.push(`<div class="hm-hour-label">${label}</div>`);
+	}
+
+	const rows: string[] = [...hourRow];
 	for (let d = 0; d < 7; d++) {
 		rows.push(`<div class="hm-label">${DOW_LABELS[d]}</div>`);
 		for (let h = 0; h < 24; h++) {

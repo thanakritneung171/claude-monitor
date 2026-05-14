@@ -22,12 +22,14 @@
 /* ─── Sidebar header ──────────────────────────────────────────────────────── */
 .sb-head {
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	gap: 10px;
-	padding: 16px 14px 12px;
+	gap: 8px;
+	padding: 16px 14px 14px;
 	flex-shrink: 0;
 }
 .sb-logo {
+	display: none;
 	width: 36px; height: 36px;
 	border-radius: 10px;
 	background: white;
@@ -35,13 +37,22 @@
 	font-weight: 800;
 	font-size: 13px;
 	letter-spacing: -0.02em;
-	display: grid; place-items: center;
+	place-items: center;
 	box-shadow: 0 4px 10px -4px rgba(0,0,0,0.15);
 	flex-shrink: 0;
 }
-.sb-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.sb-title strong { font-size: 14px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; white-space: nowrap; }
-.sb-title span { font-size: 11px; opacity: 0.75; margin-top: 2px; white-space: nowrap; }
+.sb-logo-full {
+	display: block;
+	height: 28px;
+	width: auto;
+	max-width: 172px;
+	object-fit: contain;
+	filter: brightness(0) invert(1);
+	opacity: 0.92;
+}
+.sb-title { display: flex; flex-direction: column; min-width: 0; width: 100%; text-align: center; }
+.sb-title strong { font-size: 13px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; white-space: nowrap; }
+.sb-title span { font-size: 11px; opacity: 0.7; margin-top: 1px; white-space: nowrap; }
 
 
 /* ─── Nav items ───────────────────────────────────────────────────────────── */
@@ -91,6 +102,8 @@
 	gap: 8px;
 	padding: 14px 0 10px;
 }
+.sidebar.collapsed .sb-logo { display: grid; }
+.sidebar.collapsed .sb-logo-full { display: none; }
 .sidebar.collapsed .sb-title { display: none; }
 
 .sidebar.collapsed .sb-nav {
