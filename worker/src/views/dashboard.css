@@ -5,7 +5,7 @@
 .field.period { flex: 1.6 1 220px; }
 .field.dates { flex: 1 1 140px; }
 .field-actions { display: flex; gap: 8px; margin-left: auto; }
-.field label { display: block; font-size: 10px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
+.field label { display: block; font-size: 16px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
 
 /* ─── 6 gradient stat cards ─────────────────────────────────────────────── */
 .stats-6 {
@@ -33,16 +33,16 @@
 	pointer-events: none;
 }
 .stats-6 .stat .label {
-	font-size: 11px;
+	font-size: 16px;
 	text-transform: uppercase;
-	letter-spacing: 0.08em;
+	letter-spacing: 0.06em;
 	opacity: 0.92;
 	font-weight: 700;
 	margin-bottom: 14px;
 	color: white;
 }
 .stats-6 .stat .value {
-	font-size: clamp(20px, 1.7vw, 26px);
+	font-size: clamp(28px, 2.2vw, 40px);
 	font-weight: 800;
 	letter-spacing: -0.02em;
 	line-height: 1;
@@ -59,49 +59,49 @@
 
 /* ─── 3-column breakdown grid ─────────────────────────────────────────── */
 .grid-3 { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.show-more { font-size: 12px; color: var(--peach-500); font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; background: none; border: 0; font-family: inherit; }
+.show-more { font-size: 14px; color: var(--peach-500); font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: background 0.15s; background: none; border: 0; font-family: inherit; }
 .show-more:hover { background: var(--peach-50); }
 
 /* ─── Logs section ─────────────────────────────────────────────────────── */
 .logs { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
 .logs-head { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--line); background: var(--bg-soft); }
-.logs-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
-.logs-head .sub { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
-.pager { display: flex; align-items: center; gap: 14px; color: var(--ink-2); font-size: 13px; }
+.logs-head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+.logs-head .sub { color: var(--ink-3); font-size: 14px; margin-top: 2px; }
+.pager { display: flex; align-items: center; gap: 14px; color: var(--ink-2); font-size: 16px; }
 .pager .seg-sm { height: 32px; padding: 3px; }
-.pager .seg-sm button { font-size: 12px; padding: 0 10px; }
+.pager .seg-sm button { font-size: 16px; padding: 0 10px; }
 
 .table-scroll { overflow-x: auto; }
 table.logs-table { width: 100%; min-width: 900px; border-collapse: collapse; }
-.logs-table th { text-align: left; font-size: 10px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 12px; background: var(--card); white-space: nowrap; border-bottom: 1px solid var(--line); }
+.logs-table th { text-align: left; font-size: 16px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; padding: 10px 12px; background: var(--card); white-space: nowrap; border-bottom: 1px solid var(--line); }
 .logs-table th:first-child { padding-left: 20px; }
 .logs-table th:last-child { padding-right: 20px; text-align: right; }
-.logs-table td { padding: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2); vertical-align: middle; }
+.logs-table td { padding: 12px; border-top: 1px solid var(--line); font-size: 16px; color: var(--ink-2); vertical-align: middle; }
 .logs-table td:first-child { padding-left: 20px; }
 .logs-table td:last-child { padding-right: 20px; text-align: right; }
 .logs-table tbody tr { transition: background 0.12s; cursor: pointer; }
 .logs-table tbody tr:hover { background: var(--bg-soft); }
 
-.time { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--ink); font-weight: 500; white-space: nowrap; }
-.time .date { color: var(--ink-3); font-size: 11px; display: block; margin-top: 2px; }
+.time { font-family: "JetBrains Mono", monospace; font-size: 16px; color: var(--ink); font-weight: 500; white-space: nowrap; }
+.time .date { color: var(--ink-3); font-size: 14px; display: block; margin-top: 2px; }
 
 .prompt-cell { max-width: 360px; color: var(--ink); font-weight: 500; line-height: 1.45; }
 .prompt-cell .truncate { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.prompt-cell .more { color: var(--peach-500); font-weight: 600; font-size: 12px; cursor: pointer; }
+.prompt-cell .more { color: var(--peach-500); font-weight: 600; font-size: 14px; cursor: pointer; }
 .num-cell { text-align: center; }
-.num-cell .mono { font-size: 13px; font-weight: 600; color: var(--ink); }
+.num-cell .mono { font-size: 16px; font-weight: 600; color: var(--ink); }
 .num-cell.cw .mono { color: oklch(54.6% .245 262.881); }
 .num-cell.cr .mono { color: oklch(62.7% .194 149.214); }
-td.cost-cell { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 14px; color: oklch(64.6% 0.222 41.116); }
+td.cost-cell { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 16px; color: oklch(64.6% 0.222 41.116); }
 .logs-table th.th-center { text-align: center; white-space: normal; line-height: 1.3; }
 .td-center { text-align: center; }
 
 /* Pagination */
 .pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--bg-soft); gap: 12px; flex-wrap: wrap; }
-.pagination .info { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.pagination .info { font-size: 14px; color: var(--ink-2); font-weight: 500; }
 .pagination .info strong { color: var(--ink); font-weight: 700; font-family: "JetBrains Mono", monospace; }
 .pagination .pages { display: flex; gap: 4px; align-items: center; }
-.page-btn { min-width: 32px; height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-2); background: white; color: var(--ink-2); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.15s; text-decoration: none; }
+.page-btn { min-width: 32px; height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-2); background: white; color: var(--ink-2); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; transition: all 0.15s; text-decoration: none; }
 .page-btn:hover:not(:disabled) { border-color: var(--peach-300); background: var(--peach-50); color: var(--ink); }
 .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .page-btn.active { background: linear-gradient(180deg, var(--peach-300), var(--peach-400)); color: white; border-color: transparent; box-shadow: 0 4px 10px -2px rgba(244, 121, 72, 0.35); opacity: 1; cursor: default; }
@@ -112,11 +112,11 @@ td.cost-cell { font-family: "JetBrains Mono", monospace; font-weight: 700; font-
 .logs-cards { display: none; padding: 12px; }
 .log-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 12px; cursor: pointer; }
 .log-card .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
-.log-card .prompt { font-size: 14px; font-weight: 500; color: var(--ink); line-height: 1.45; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.log-card .prompt { font-size: 16px; font-weight: 500; color: var(--ink); line-height: 1.45; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .log-card .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
-.log-card .meta-grid > div { font-size: 11px; color: var(--ink-3); font-weight: 500; }
-.log-card .meta-grid strong { display: block; font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 600; color: var(--ink); margin-top: 2px; word-break: break-all; }
-.log-card .cost-big { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 16px; color: var(--ink); }
+.log-card .meta-grid > div { font-size: 14px; color: var(--ink-3); font-weight: 500; }
+.log-card .meta-grid strong { display: block; font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 600; color: var(--ink); margin-top: 2px; word-break: break-all; }
+.log-card .cost-big { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 18px; color: var(--ink); }
 
 /* Modal */
 .modal { position: fixed; inset: 0; background: rgba(42, 26, 18, 0.4); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
@@ -125,10 +125,10 @@ td.cost-cell { font-family: "JetBrains Mono", monospace; font-weight: 700; font-
 .modal-card { background: var(--card); border-radius: 24px; max-width: 720px; width: 100%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 32px 80px -20px rgba(42, 26, 18, 0.4); animation: slideUp 0.25s cubic-bezier(.2,.8,.2,1); }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .modal-head { padding: 22px 26px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
-.modal-head h3 { margin: 0; font-size: 18px; font-weight: 700; }
+.modal-head h3 { margin: 0; font-size: 20px; font-weight: 700; }
 .modal-close { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--bg-soft); cursor: pointer; font-size: 18px; color: var(--ink-2); display: grid; place-items: center; }
 .modal-close:hover { background: var(--peach-100); color: var(--ink); }
-.modal-body { padding: 24px 26px; overflow-y: auto; font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+.modal-body { padding: 24px 26px; overflow-y: auto; font-size: 16px; color: var(--ink-2); line-height: 1.6; }
 .modal-body.prompt-body { white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
 
 /* Responsive */

@@ -2,7 +2,7 @@ import css from './users.css';
 import clientJs from './users.client.js';
 import type { User } from '../types';
 import { esc, fmtBkk, num } from '../lib/format';
-import { renderLayout } from './layout';
+import { renderLayout, type NavKey } from './layout';
 
 export interface UsersRenderInput {
 	user?: User;
@@ -100,7 +100,7 @@ export function renderUsers(d: UsersRenderInput): string {
 		</dialog>`;
 
 	return renderLayout({
-		activeNav: 'users',
+		activeNav: 'users' as unknown as NavKey,
 		user: d.user,
 		pageTitle: 'Users',
 		pageSubtitle: 'จัดการบัญชีผู้ใช้และสิทธิ์การเข้าถึง dashboard',

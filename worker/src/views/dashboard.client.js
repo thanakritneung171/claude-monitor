@@ -1,10 +1,40 @@
+// Date format helpers: iso↔display
+function isoToDisplay(iso) {
+	var p = iso.split('-');
+	return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+}
+function displayToIso(dmy) {
+	var p = dmy.split('/');
+	return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : dmy;
+}
+
+// Auto-format dd/mm/yyyy while typing
+['df', 'dt'].forEach(function(id) {
+	var el = document.getElementById(id);
+	el.addEventListener('input', function() {
+		var raw = el.value.replace(/\D/g, '').slice(0, 8);
+		var out = raw;
+		if (raw.length > 4) out = raw.slice(0, 2) + '/' + raw.slice(2, 4) + '/' + raw.slice(4);
+		else if (raw.length > 2) out = raw.slice(0, 2) + '/' + raw.slice(2);
+		el.value = out;
+	});
+});
+
+// Convert dd/mm/yyyy → yyyy-mm-dd before submit
+document.getElementById('ff').addEventListener('submit', function() {
+	['df', 'dt'].forEach(function(id) {
+		var el = document.getElementById(id);
+		if (/^\d{2}\/\d{2}\/\d{4}$/.test(el.value)) el.value = displayToIso(el.value);
+	});
+});
+
 // Period seg
 document.querySelectorAll('#periodSeg button').forEach(b => b.addEventListener('click', () => {
 	const v = b.dataset.period;
 	document.getElementById('period').value = v;
-	if (v === 'daily')   { document.getElementById('df').value = D_TODAY; document.getElementById('dt').value = D_TODAY; }
-	else if (v === 'monthly') { document.getElementById('df').value = D_MONTH; document.getElementById('dt').value = D_TODAY; }
-	else if (v === 'yearly')  { document.getElementById('df').value = D_YEAR;  document.getElementById('dt').value = D_TODAY; }
+	if (v === 'daily')   { document.getElementById('df').value = isoToDisplay(D_TODAY); document.getElementById('dt').value = isoToDisplay(D_TODAY); }
+	else if (v === 'monthly') { document.getElementById('df').value = isoToDisplay(D_MONTH); document.getElementById('dt').value = isoToDisplay(D_TODAY); }
+	else if (v === 'yearly')  { document.getElementById('df').value = isoToDisplay(D_YEAR);  document.getElementById('dt').value = isoToDisplay(D_TODAY); }
 	document.getElementById('ff').submit();
 }));
 

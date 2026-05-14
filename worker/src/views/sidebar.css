@@ -35,7 +35,7 @@
 	background: white;
 	color: var(--peach-500);
 	font-weight: 800;
-	font-size: 13px;
+	font-size: 18px;
 	letter-spacing: -0.02em;
 	place-items: center;
 	box-shadow: 0 4px 10px -4px rgba(0,0,0,0.15);
@@ -51,8 +51,8 @@
 	opacity: 0.92;
 }
 .sb-title { display: flex; flex-direction: column; min-width: 0; width: 100%; text-align: center; }
-.sb-title strong { font-size: 13px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; white-space: nowrap; }
-.sb-title span { font-size: 11px; opacity: 0.7; margin-top: 1px; white-space: nowrap; }
+.sb-title strong { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.2; white-space: nowrap; }
+.sb-title span { font-size: 16px; opacity: 0.7; margin-top: 1px; white-space: nowrap; }
 
 
 /* ─── Nav items ───────────────────────────────────────────────────────────── */
@@ -73,7 +73,7 @@
 	border-radius: 10px;
 	color: white;
 	text-decoration: none;
-	font-size: 13px;
+	font-size: 16px;
 	font-weight: 600;
 	transition: background 0.12s, color 0.12s, box-shadow 0.12s;
 	white-space: nowrap;
@@ -180,7 +180,7 @@
 	border-radius: 999px;
 	border: 1px solid var(--line);
 	background: var(--card);
-	font-family: inherit; font-size: 13px;
+	font-family: inherit; font-size: 16px;
 	color: var(--ink);
 	transition: all 0.15s;
 }
@@ -248,15 +248,15 @@
 	flex-shrink: 0;
 }
 .avatar-drop-info { min-width: 0; flex: 1; }
-.avatar-drop-email { font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.avatar-drop-role { font-size: 10px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+.avatar-drop-email { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.avatar-drop-role { font-size: 14px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
 .avatar-drop-sep { height: 1px; background: var(--line); margin: 0 14px; }
 .avatar-drop-logout {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	padding: 10px 14px;
-	font-size: 13px;
+	font-size: 16px;
 	font-weight: 600;
 	color: var(--bad);
 	text-decoration: none;
@@ -281,7 +281,7 @@
 	border-bottom: 1px solid var(--line);
 }
 .page-head h1 {
-	font-size: 26px;
+	font-size: 32px;
 	font-weight: 800;
 	margin: 0;
 	letter-spacing: -0.02em;
@@ -289,7 +289,7 @@
 }
 .page-head .page-sub {
 	color: var(--ink-3);
-	font-size: 13px;
+	font-size: 20px;
 	margin-top: 4px;
 }
 

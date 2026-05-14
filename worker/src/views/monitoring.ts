@@ -3,7 +3,7 @@ import type { User } from '../types';
 import type { ErrorRatePoint, ThroughputPoint, ActiveSession, ErrorGroup } from '../db/queries-extra';
 import { esc, num } from '../lib/format';
 import { modelLabel, clientBadge } from '../lib/badge';
-import { renderLayout } from './layout';
+import { renderLayout, type NavKey } from './layout';
 
 export interface MonitoringRenderInput {
 	user?: User;
@@ -140,7 +140,7 @@ export function renderMonitoring(d: MonitoringRenderInput): string {
 		</div>`;
 
 	return renderLayout({
-		activeNav: 'monitoring',
+		activeNav: 'monitoring' as unknown as NavKey,
 		user: d.user,
 		pageTitle: 'Monitoring',
 		pageSubtitle: 'สถานะการทำงานแบบ real-time, error rate, throughput',

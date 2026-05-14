@@ -7,15 +7,21 @@ import type { User } from '../types';
 import { esc } from '../lib/format';
 import { LOGO_DATA_URL } from '../lib/logo';
 
+// export type NavKey =
+// 	| 'dashboard'
+// 	| 'analytics'
+// 	| 'insights'
+// 	| 'data_sources'
+// 	| 'monitoring'
+// 	| 'accounts'
+// 	| 'users'
+// 	| 'reports'
+// 	| 'settings';
+
 export type NavKey =
 	| 'dashboard'
 	| 'analytics'
-	| 'insights'
-	| 'data_sources'
-	| 'monitoring'
 	| 'accounts'
-	| 'users'
-	| 'reports'
 	| 'settings';
 
 export interface LayoutInput {
@@ -30,7 +36,8 @@ export interface LayoutInput {
 	title?: string; // <title>
 }
 
-const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'insights', 'data_sources', 'monitoring', 'accounts', 'users', 'reports', 'settings'];
+// const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'insights', 'data_sources', 'monitoring', 'accounts', 'users', 'reports', 'settings'];
+const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'accounts', 'settings'];
 
 export function renderSidebar(activeNav: NavKey, user?: User): string {
 	let out = sidebarHtml;

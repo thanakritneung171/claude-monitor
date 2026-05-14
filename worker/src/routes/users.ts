@@ -1,7 +1,7 @@
 import type { Env, User } from '../types';
 import { hashPassword, newSessionToken } from '../lib/auth';
 import { renderUsers } from '../views/users';
-import { render403 } from '../views/layout';
+import { render403, type NavKey } from '../views/layout';
 
 const htmlResponse = (body: string, init: ResponseInit = {}) =>
 	new Response(body, { ...init, headers: { 'Content-Type': 'text/html;charset=utf-8', ...(init.headers ?? {}) } });
@@ -16,7 +16,7 @@ async function loadUsers(env: Env): Promise<User[]> {
 
 export async function handleUsersGet(url: URL, env: Env, user?: User): Promise<Response> {
 	if (user?.role !== 'admin') {
-		return htmlResponse(render403('users', user), { status: 403 });
+		return htmlResponse(render403('users' as unknown as NavKey, user), { status: 403 });
 	}
 	const users = await loadUsers(env);
 
@@ -34,7 +34,7 @@ export async function handleUsersGet(url: URL, env: Env, user?: User): Promise<R
 
 export async function handleUsersPost(request: Request, env: Env, user?: User): Promise<Response> {
 	if (user?.role !== 'admin') {
-		return htmlResponse(render403('users', user), { status: 403 });
+		return htmlResponse(render403('users' as unknown as NavKey, user), { status: 403 });
 	}
 	const form = await request.formData();
 	const action = String(form.get('action') ?? '');

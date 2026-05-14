@@ -10,6 +10,11 @@ import { renderLayout } from './layout';
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
 const TOP_N = 5;
 
+function toDisplayDate(iso: string): string {
+	const [y, m, d] = iso.split('-');
+	return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
 const arrowL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>';
 const arrowR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
 
@@ -238,6 +243,8 @@ export function renderDashboard(d: RenderInput): string {
 		'{{period}}':   esc(d.filters.period),
 		'{{dateFrom}}': esc(d.filters.dateFrom),
 		'{{dateTo}}':   esc(d.filters.dateTo),
+		'{{dateFromDisplay}}': esc(toDisplayDate(d.filters.dateFrom)),
+		'{{dateToDisplay}}':   esc(toDisplayDate(d.filters.dateTo)),
 		'{{modelAllSelected}}':   d.filters.model   === '' ? ' selected' : '',
 		'{{accountAllSelected}}': d.filters.account === '' ? ' selected' : '',
 		'{{clientAllSelected}}':  d.filters.client  === '' ? ' selected' : '',

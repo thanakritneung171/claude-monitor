@@ -2,7 +2,7 @@ import css from './data-sources.css';
 import type { User } from '../types';
 import type { IngestStats } from '../db/queries-extra';
 import { esc, fmtBkk, num } from '../lib/format';
-import { renderLayout } from './layout';
+import { renderLayout, type NavKey } from './layout';
 
 export interface DataSourcesRenderInput {
 	user?: User;
@@ -97,7 +97,7 @@ mitmdump -s addon.py --listen-port 8080
 		</div>`;
 
 	return renderLayout({
-		activeNav: 'data_sources',
+		activeNav: 'data_sources' as unknown as NavKey,
 		user: d.user,
 		pageTitle: 'Data Sources',
 		pageSubtitle: 'จัดการแหล่งข้อมูลและ proxy endpoint ที่ป้อนข้อมูลเข้าระบบ',

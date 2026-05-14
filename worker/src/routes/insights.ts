@@ -1,5 +1,5 @@
 import type { Env, User } from '../types';
-import { renderLayout, renderIncomingBlock } from '../views/layout';
+import { renderLayout, renderIncomingBlock, type NavKey } from '../views/layout';
 
 export async function handleInsights(_url: URL, _env: Env, user?: User): Promise<Response> {
 	const content = renderIncomingBlock(
@@ -7,7 +7,7 @@ export async function handleInsights(_url: URL, _env: Env, user?: User): Promise
 		'AI-driven findings จากการใช้งานจริง — ฟีเจอร์นี้อยู่ระหว่างการพัฒนา',
 	);
 	const html = renderLayout({
-		activeNav: 'insights',
+		activeNav: 'insights' as unknown as NavKey,
 		user,
 		pageTitle: 'Insights',
 		pageSubtitle: 'AI-driven findings จากการใช้งานจริง',

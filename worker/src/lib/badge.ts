@@ -30,7 +30,7 @@ export function modelBadge(model: string, colorMap?: Map<string, string>): strin
 }
 
 export function normalizeClient(raw: string): string {
-	if (raw === 'claude-code-cli' || raw === 'claude-desktop') return 'client';
+	if (raw === 'claude-code-cli' || raw === 'claude-desktop') return 'claude-code-cli, claude-desktop';
 	return raw;
 }
 

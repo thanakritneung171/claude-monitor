@@ -2,7 +2,7 @@ import css from './reports.css';
 import type { User } from '../types';
 import { esc } from '../lib/format';
 import { todayBkk, firstOfMonthBkk } from '../lib/date';
-import { renderLayout } from './layout';
+import { renderLayout, type NavKey } from './layout';
 
 export interface ReportsRenderInput { user?: User; }
 
@@ -93,7 +93,7 @@ export function renderReports(d: ReportsRenderInput): string {
 		</div>`;
 
 	return renderLayout({
-		activeNav: 'reports',
+		activeNav: 'reports' as unknown as NavKey,
 		user: d.user,
 		pageTitle: 'Reports',
 		pageSubtitle: 'สร้างรายงานและ export ข้อมูลในรูปแบบ CSV',

@@ -4,7 +4,7 @@ import type { TopPromptRow, AnomalyDay, CacheRatioRow } from '../db/queries-extr
 import type { ByClient } from '../types';
 import { esc, num } from '../lib/format';
 import { modelLabel } from '../lib/badge';
-import { renderLayout } from './layout';
+import { renderLayout, type NavKey } from './layout';
 
 export interface InsightsRenderInput {
 	user?: User;
@@ -87,7 +87,7 @@ export function renderInsights(d: InsightsRenderInput): string {
 		</div>`;
 
 	return renderLayout({
-		activeNav: 'insights',
+		activeNav: 'insights' as unknown as NavKey,
 		user: d.user,
 		pageTitle: 'Insights',
 		pageSubtitle: 'AI-driven findings จากการใช้งานจริง',
