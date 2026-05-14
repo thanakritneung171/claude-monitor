@@ -66,7 +66,7 @@ ${input.headExtra ?? ''}
 	${sidebar}
 	<div class="main">
 		<header class="topbar-inner">
-			<button class="tb-toggle" id="tbToggle" aria-label="Toggle sidebar">
+			<button class="tb-toggle" id="sbToggle" aria-label="Toggle sidebar">
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
 			</button>
 			<div class="tb-search">
@@ -82,8 +82,12 @@ ${input.headExtra ?? ''}
 		</header>
 		<div class="page">
 			<div class="page-head">
-				<h1>${esc(input.pageTitle)}</h1>
-				${pageSubtitle ? `<div class="page-sub">${esc(pageSubtitle)}</div>` : ''}
+				<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+					<div>
+						<h1>${esc(input.pageTitle)}</h1>
+						${pageSubtitle ? `<div class="page-sub">${esc(pageSubtitle)}</div>` : ''}
+					</div>
+				</div>
 			</div>
 			${input.content}
 		</div>
@@ -93,6 +97,19 @@ ${input.headExtra ?? ''}
 ${input.pageJs ? `<script>${input.pageJs}</script>` : ''}
 </body>
 </html>`;
+}
+
+export function renderIncomingBlock(title: string, description: string): string {
+	return `<div class="card" style="margin-top:14px;">
+		<div class="incoming-block">
+			<div class="incoming-icon">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+			</div>
+			<span class="badge-incoming">⏳ Incoming</span>
+			<h3>${esc(title)}</h3>
+			<p>${esc(description)}</p>
+		</div>
+	</div>`;
 }
 
 export function render403(activeNav: NavKey, user?: User): string {

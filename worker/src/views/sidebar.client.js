@@ -2,7 +2,7 @@
 	var KEY = 'sdb-sb-collapsed';
 	var sb = document.getElementById('sidebar');
 	var shell = document.getElementById('shell');
-	var toggle = document.getElementById('tbToggle');
+	var sbToggle = document.getElementById('sbToggle'); // in topbar — desktop & mobile
 	if (!sb || !shell) return;
 
 	function apply(collapsed) {
@@ -19,19 +19,20 @@
 		apply(localStorage.getItem(KEY) === '1');
 	} catch (e) { /* ignore */ }
 
-	if (toggle) {
-		toggle.addEventListener('click', function () {
+	// Toggle: desktop = collapse/expand, mobile = overlay open/close
+	if (sbToggle) {
+		sbToggle.addEventListener('click', function () {
 			if (window.matchMedia('(max-width: 900px)').matches) {
 				sb.classList.toggle('mobile-open');
-				return;
+			} else {
+				var nowCollapsed = !sb.classList.contains('collapsed');
+				apply(nowCollapsed);
+				try { localStorage.setItem(KEY, nowCollapsed ? '1' : '0'); } catch (e) { /* ignore */ }
 			}
-			var nowCollapsed = !sb.classList.contains('collapsed');
-			apply(nowCollapsed);
-			try { localStorage.setItem(KEY, nowCollapsed ? '1' : '0'); } catch (e) { /* ignore */ }
 		});
 	}
 
-	// Fetch /api/me to populate avatar initial fallback
+	// Fetch /api/me to populate avatar initial
 	fetch('/api/me', { credentials: 'same-origin' })
 		.then(function (r) { return r.ok ? r.json() : null; })
 		.then(function (j) {

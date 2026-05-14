@@ -79,8 +79,17 @@ export function renderReports(d: ReportsRenderInput): string {
 		</div>
 
 		<div class="card" style="margin-top:18px;">
-			<div class="card-head"><h2>Recent exports</h2><span class="count">v1</span></div>
-			<div class="recent-empty">ระบบยังไม่บันทึกประวัติ export — ฟีเจอร์นี้จะเก็บประวัติในเวอร์ชันถัดไป</div>
+			<div class="card-head">
+				<h2>Recent exports</h2>
+				<span class="badge-incoming">⏳ Incoming</span>
+			</div>
+			<div class="incoming-block" style="padding:36px 24px;">
+				<div class="incoming-icon">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+				</div>
+				<h3>Export history</h3>
+				<p>ระบบจะบันทึกประวัติ export ไว้ให้ดาวน์โหลดซ้ำได้ — ฟีเจอร์นี้จะพร้อมในเวอร์ชันถัดไป</p>
+			</div>
 		</div>`;
 
 	return renderLayout({
