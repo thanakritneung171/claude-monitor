@@ -37,7 +37,10 @@ export default {
 		if (pathname === '/log'      && method === 'POST') return handleLog(request, env);
 		if (pathname === '/health')                        return handleHealth();
 		if (pathname === '/login'    && method === 'GET')  return handleLoginGet(url, env, request);
-		if (pathname === '/callback' && method === 'GET')  return handleCallback(url, env, request);
+		// Logto redirect_uri is registered as the root URL — when ?code= is present, handle as OAuth callback
+		if (pathname === '/'         && method === 'GET' && url.searchParams.has('code')) {
+			return handleCallback(url, env, request);
+		}
 		if (pathname === '/logout')                        return handleLogout(request, env);
 		if (pathname === '/api/me'   && method === 'GET')  return handleMe(request, env);
 

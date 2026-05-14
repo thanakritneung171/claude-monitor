@@ -16,7 +16,7 @@
 	"vars": {
 		"LOGTO_ENDPOINT": "https://authlogin.softdebut.com",
 		"LOGTO_APP_ID": "gw6k1x5awy3w81o6auptn",
-		"LOGTO_REDIRECT_URI": "https://claude-monitor-hooks.cloudflare-training3.workers.dev/callback"
+		"LOGTO_REDIRECT_URI": "https://claude-monitor-hooks.cloudflare-training3.workers.dev"
 	},
 	"rules": [
 		{ "type": "Text", "globs": ["**/*.html", "**/*.css", "**/*.client.js"], "fallthrough": true }
