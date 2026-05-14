@@ -4,7 +4,7 @@ import clientJs from './dashboard.client.js';
 
 import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, User } from '../types';
 import { esc, num, fmtBkkParts } from '../lib/format';
-import { modelBadge, clientBadge, accountBadge, modelLabel } from '../lib/badge';
+import { modelBadge, clientBadge, accountBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
 import { renderLayout } from './layout';
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
@@ -75,14 +75,25 @@ function renderPagination(filters: Filters, totalCount: number, perPageVal: stri
 
 interface BarItem { name: string; n: number; cost: number; }
 
-function barRowsHtml(items: BarItem[]): string {
+function barRowsHtml(items: BarItem[], style: 'default' | 'model' | 'client' = 'default', colorMap?: Map<string, string>): string {
 	if (items.length === 0) return `<div style="color:var(--ink-3);font-size:13px;padding:8px 0">ไม่มีข้อมูล</div>`;
 	const max = Math.max(...items.map(i => i.cost), 1);
 	return items.map((it, i) => {
-		const color = BAR_COLORS[i % BAR_COLORS.length];
+		let color: string;
+		let nameHtml: string;
+		if (style === 'model') {
+			color = colorMap?.get(it.name) ?? MODEL_PASTEL[0];
+			nameHtml = `<span class="chip" style="background:${color};color:#1F2937">${esc(it.name)}</span>`;
+		} else if (style === 'client') {
+			color = colorMap?.get(it.name) ?? CLIENT_DARK[0];
+			nameHtml = `<span class="chip" style="background:${color};color:#fff;box-shadow:0 2px 8px ${color}55">${esc(it.name)}</span>`;
+		} else {
+			color = BAR_COLORS[i % BAR_COLORS.length];
+			nameHtml = `<span class="swatch" style="background:${color}"></span>${esc(it.name)}`;
+		}
 		const pct = Math.max(2, (it.cost / max) * 100);
 		return `<div class="bar-row">
-			<div class="name"><span class="swatch" style="background:${color}"></span>${esc(it.name)}</div>
+			<div class="name">${nameHtml}</div>
 			<div class="num"><span>${num(it.n)} calls</span><strong>$${num(it.cost, 4)}</strong></div>
 			<div class="bar-track"><div class="bar-fill" data-pct="${pct.toFixed(1)}" style="width:0%;background:${color}"></div></div>
 		</div>`;
@@ -105,7 +116,7 @@ function renderStatCards(totals: Totals): string {
 		</div>`).join('');
 }
 
-function renderLogRows(rows: ApiLog[]): string {
+function renderLogRows(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap: Map<string, string>): string {
 	if (rows.length === 0) {
 		return `<tr><td colspan="10" style="padding:32px 26px;color:var(--ink-3);text-align:center;">ไม่พบรายการ</td></tr>`;
 	}
@@ -114,20 +125,20 @@ function renderLogRows(rows: ApiLog[]): string {
 		const fullPrompt = esc(r.prompt);
 		return `<tr data-full="${fullPrompt}">
 			<td><span class="time">${esc(time)}<span class="date">${esc(date)}</span></span></td>
-			<td>${clientBadge(r.client)}</td>
+			<td class="td-center">${clientBadge(r.client, cColorMap)}</td>
 			<td>${accountBadge(r.account_email)}</td>
-			<td>${modelBadge(r.model)}</td>
+			<td class="td-center">${modelBadge(r.model, mColorMap)}</td>
 			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div><span class="more">เปิดดูเต็ม →</span></td>
 			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
 			<td class="num-cell"><span class="mono">${num(r.output_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.cache_creation_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.cache_read_tokens)}</span></td>
+			<td class="num-cell cw"><span class="mono">${num(r.cache_creation_tokens)}</span></td>
+			<td class="num-cell cr"><span class="mono">${num(r.cache_read_tokens)}</span></td>
 			<td class="cost-cell">$${num(r.cost_usd, 5)}</td>
 		</tr>`;
 	}).join('');
 }
 
-function renderLogCards(rows: ApiLog[]): string {
+function renderLogCards(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap: Map<string, string>): string {
 	if (rows.length === 0) {
 		return `<div style="padding:32px 16px;color:var(--ink-3);text-align:center;font-size:14px;">ไม่พบรายการ</div>`;
 	}
@@ -141,8 +152,8 @@ function renderLogCards(rows: ApiLog[]): string {
 			</div>
 			<div class="prompt">${esc(r.prompt)}</div>
 			<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-				${modelBadge(r.model)}
-				${clientBadge(r.client)}
+				${modelBadge(r.model, mColorMap)}
+				${clientBadge(r.client, cColorMap)}
 			</div>
 			<div class="meta-grid">
 				<div>Account<strong style="font-size:11px;">${esc(r.account_email || '—')}</strong></div>
@@ -191,18 +202,30 @@ export function renderDashboard(d: RenderInput): string {
 	const accountOpts = d.allAccounts.map(a => `<option value="${esc(a)}"${d.filters.account === a ? ' selected' : ''}>${esc(a || '—')}</option>`).join('');
 	const clientOpts  = d.allClients.map(c  => `<option value="${esc(c)}"${d.filters.client  === c ? ' selected' : ''}>${esc(c)}</option>`).join('');
 
-	const modelItems:   BarItem[] = d.byModel.map(m   => ({ name: modelLabel(m.model),       n: m.n, cost: m.cost ?? 0 }));
-	const accountItems: BarItem[] = d.byAccount.map(a => ({ name: a.account_email || '—',   n: a.n, cost: a.cost ?? 0 }));
-	const clientItems:  BarItem[] = d.byClient.map(c  => ({ name: c.client,                  n: c.n, cost: c.cost ?? 0 }));
+	const modelItems:   BarItem[] = d.byModel.map(m   => ({ name: modelLabel(m.model),     n: m.n, cost: m.cost ?? 0 }));
+	const accountItems: BarItem[] = d.byAccount.map(a => ({ name: a.account_email || '—', n: a.n, cost: a.cost ?? 0 }));
+	const clientItems:  BarItem[] = d.byClient.map(c  => ({ name: c.client,                n: c.n, cost: c.cost ?? 0 }));
 
-	const byModelHtml   = barRowsHtml(modelItems.slice(0, TOP_N));
+	// Build non-repeating color maps from ALL names in this page
+	const allModelLabels = [...new Set([
+		...modelItems.map(it => it.name),
+		...d.rows.map(r => modelLabel(r.model)),
+	])];
+	const allClientNames = [...new Set([
+		...clientItems.map(it => it.name),
+		...d.rows.map(r => normalizeClient(r.client)),
+	])];
+	const mColorMap = buildColorMap(allModelLabels, MODEL_PASTEL);
+	const cColorMap = buildColorMap(allClientNames, CLIENT_DARK);
+
+	const byModelHtml   = barRowsHtml(modelItems.slice(0, TOP_N), 'model',  mColorMap);
 	const byAccountHtml = barRowsHtml(accountItems.slice(0, TOP_N));
-	const byClientHtml  = barRowsHtml(clientItems.slice(0, TOP_N));
+	const byClientHtml  = barRowsHtml(clientItems.slice(0, TOP_N), 'client', cColorMap);
 
 	const breakdownAll = JSON.stringify({
-		model: modelItems,
+		model:   modelItems.map(it => ({ ...it, color: mColorMap.get(it.name) ?? '' })),
 		account: accountItems,
-		client: clientItems,
+		client:  clientItems.map(it => ({ ...it, color: cColorMap.get(it.name) ?? '' })),
 	});
 
 	const replacements: Record<string, string> = {
@@ -234,8 +257,8 @@ export function renderDashboard(d: RenderInput): string {
 		'{{size50On}}':  perPageVal === '50'  ? ' class="on"' : '',
 		'{{size100On}}': perPageVal === '100' ? ' class="on"' : '',
 		'{{sizeAllOn}}': perPageVal === 'all' ? ' class="on"' : '',
-		'{{logRows}}':    renderLogRows(d.rows),
-		'{{logCards}}':   renderLogCards(d.rows),
+		'{{logRows}}':    renderLogRows(d.rows, mColorMap, cColorMap),
+		'{{logCards}}':   renderLogCards(d.rows, mColorMap, cColorMap),
 		'{{pagination}}': renderPagination(d.filters, d.totalCount, perPageVal),
 		'{{today}}':      d.todayStr,
 		'{{firstMonth}}': d.firstMonthStr,

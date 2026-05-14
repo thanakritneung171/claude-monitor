@@ -6,7 +6,7 @@ import type { AccountDetailData } from '../db/queries';
 import type { ApiLog, User } from '../types';
 import { renderLayout } from './layout';
 import { esc, num, fmtBkk, fmtBkkParts } from '../lib/format';
-import { modelBadge, clientBadge, modelLabel } from '../lib/badge';
+import { modelBadge, clientBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
 import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTimeTh, compactNum } from '../lib/account';
 import { todayBkk, firstOfYearBkk } from '../lib/date';
 
@@ -29,6 +29,10 @@ export interface AccountDetailRenderInput {
 }
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
+
+function buildLocalColorMap(items: { name: string }[], palette: string[]): Map<string, string> {
+	return buildColorMap(items.map(it => it.name), palette);
+}
 
 const TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -63,14 +67,25 @@ const STAT_SVG = {
 	clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
 };
 
-function barRowsHtml(items: { name: string; n: number; cost: number }[]): string {
+function barRowsHtml(items: { name: string; n: number; cost: number }[], style: 'default' | 'model' | 'client' = 'default', colorMap?: Map<string, string>): string {
 	if (items.length === 0) return `<div style="color:var(--ink-3);font-size:13px;padding:8px 0">ไม่มีข้อมูล</div>`;
 	const max = Math.max(...items.map(i => i.cost), 1);
 	return items.map((it, i) => {
-		const color = BAR_COLORS[i % BAR_COLORS.length];
+		let color: string;
+		let nameHtml: string;
+		if (style === 'model') {
+			color = colorMap?.get(it.name) ?? MODEL_PASTEL[0];
+			nameHtml = `<span class="chip" style="background:${color};color:#1F2937">${esc(it.name)}</span>`;
+		} else if (style === 'client') {
+			color = colorMap?.get(it.name) ?? CLIENT_DARK[0];
+			nameHtml = `<span class="chip" style="background:${color};color:#fff;box-shadow:0 2px 8px ${color}55">${esc(it.name)}</span>`;
+		} else {
+			color = BAR_COLORS[i % BAR_COLORS.length];
+			nameHtml = `<span class="swatch" style="background:${color}"></span><span>${esc(it.name)}</span>`;
+		}
 		const pct = Math.max(2, (it.cost / max) * 100);
 		return `<div class="bar-row">
-			<div class="name"><span class="swatch" style="background:${color}"></span><span>${esc(it.name)}</span></div>
+			<div class="name">${nameHtml}</div>
 			<div class="num"><span>${num(it.n)} calls</span><strong>$${num(it.cost, 4)}</strong></div>
 			<div class="bar-track"><div class="bar-fill" data-pct="${pct.toFixed(1)}" style="width:0%;background:${color};"></div></div>
 		</div>`;
@@ -143,8 +158,10 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 	const dotColor = stat === 'live' ? 'var(--good)' : stat === 'idle' ? 'var(--peach-300)' : '#CFC6BB';
 	const firstSeenStr = d.firstSeen ? new Date(d.firstSeen).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-	const byModelItems = d.byModel.map(m => ({ name: modelLabel(m.model), n: m.n, cost: m.cost ?? 0 }));
-	const byClientItems = d.byClient.map(c => ({ name: c.client, n: c.n, cost: c.cost ?? 0 }));
+	const byModelItems  = d.byModel.map(m => ({ name: modelLabel(m.model), n: m.n, cost: m.cost ?? 0 }));
+	const byClientItems = d.byClient.map(c => ({ name: c.client,           n: c.n, cost: c.cost ?? 0 }));
+	const mColorMap = buildLocalColorMap(byModelItems,  MODEL_PASTEL);
+	const cColorMap = buildLocalColorMap(byClientItems, CLIENT_DARK);
 
 	const clientOpts = d.allClients.map(c => `<option value="${esc(c)}"${clientFilter === c ? ' selected' : ''}>${esc(c)}</option>`).join('');
 	const modelOpts = d.allModels.map(m => `<option value="${esc(m)}"${modelFilter === m ? ' selected' : ''}>${esc(modelLabel(m))}</option>`).join('');
@@ -220,11 +237,11 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 		</div>
 		<div class="card">
 			<div class="card-head"><h2>By Model</h2><span class="count">${d.byModel.length} models</span></div>
-			<div>${barRowsHtml(byModelItems)}</div>
+			<div>${barRowsHtml(byModelItems, 'model', mColorMap)}</div>
 		</div>
 		<div class="card">
 			<div class="card-head"><h2>By Client</h2><span class="count">${d.byClient.length} clients</span></div>
-			<div>${barRowsHtml(byClientItems)}</div>
+			<div>${barRowsHtml(byClientItems, 'client', cColorMap)}</div>
 		</div>
 	</section>
 

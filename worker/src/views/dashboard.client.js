@@ -42,10 +42,18 @@ function openBreakdownModal(cat) {
 	} else {
 		const max = Math.max.apply(null, items.map(i => i.cost || 0).concat([1]));
 		modalBody.innerHTML = items.map((it, i) => {
-			const color = BAR_COLORS[i % BAR_COLORS.length];
+			var color = it.color || BAR_COLORS[i % BAR_COLORS.length];
+			var nameHtml;
+			if (cat === 'model') {
+				nameHtml = '<span class="chip" style="background:' + color + ';color:#1F2937">' + escapeHtml(it.name) + '</span>';
+			} else if (cat === 'client') {
+				nameHtml = '<span class="chip" style="background:' + color + ';color:#fff;box-shadow:0 2px 8px ' + color + '55">' + escapeHtml(it.name) + '</span>';
+			} else {
+				nameHtml = '<span class="swatch" style="background:' + color + '"></span>' + escapeHtml(it.name);
+			}
 			const pct = Math.max(2, ((it.cost || 0) / max) * 100);
 			return '<div class="bar-row">' +
-				'<div class="name"><span class="swatch" style="background:' + color + '"></span>' + escapeHtml(it.name) + '</div>' +
+				'<div class="name">' + nameHtml + '</div>' +
 				'<div class="num"><span>' + it.n.toLocaleString('en-US') + ' calls</span><strong>$' + (it.cost || 0).toFixed(4) + '</strong></div>' +
 				'<div class="bar-track"><div class="bar-fill" style="width:' + pct.toFixed(1) + '%;background:' + color + '"></div></div>' +
 			'</div>';
