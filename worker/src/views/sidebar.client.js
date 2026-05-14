@@ -44,4 +44,67 @@
 			}
 		})
 		.catch(function () { /* ignore */ });
+
+	// tbSearch — live filter table rows + mobile cards
+	var tbSearch = document.getElementById('tbSearch');
+	if (tbSearch) {
+		// Ctrl+K / ⌘K to focus search
+		document.addEventListener('keydown', function (e) {
+			if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+				e.preventDefault();
+				tbSearch.focus();
+				tbSearch.select();
+			}
+			if (e.key === 'Escape' && document.activeElement === tbSearch) {
+				tbSearch.value = '';
+				tbSearch.blur();
+				tbSearch.dispatchEvent(new Event('input'));
+			}
+		});
+
+		tbSearch.addEventListener('input', function () {
+			var q = this.value.trim().toLowerCase();
+			var rows = document.querySelectorAll('#logsTableBody tr');
+			var cards = document.querySelectorAll('#logsCards .log-card');
+			rows.forEach(function (tr) {
+				tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+			});
+			cards.forEach(function (card) {
+				card.style.display = (!q || card.textContent.toLowerCase().includes(q)) ? '' : 'none';
+			});
+			// show empty-state if all rows hidden
+			var logsBody = document.getElementById('logsTableBody');
+			if (logsBody) {
+				var anyVisible = Array.from(rows).some(function (r) { return r.style.display !== 'none'; });
+				var empty = document.getElementById('tbSearchEmpty');
+				if (!anyVisible && q) {
+					if (!empty) {
+						empty = document.createElement('tr');
+						empty.id = 'tbSearchEmpty';
+						empty.innerHTML = '<td colspan="10" style="text-align:center;padding:32px;color:var(--ink-3);font-size:13px;">ไม่พบข้อมูลที่ตรงกับ &ldquo;' + q.replace(/[<>"'&]/g, '') + '&rdquo;</td>';
+						logsBody.appendChild(empty);
+					}
+				} else if (empty) {
+					empty.remove();
+				}
+			}
+		});
+	}
+
+	// Avatar dropdown
+	var avatarBtn = document.getElementById('avatarBtn');
+	var avatarDrop = document.getElementById('avatarDrop');
+	var avatarMenu = document.getElementById('avatarMenu');
+	if (avatarBtn && avatarMenu) {
+		avatarBtn.addEventListener('click', function (e) {
+			e.stopPropagation();
+			avatarMenu.classList.toggle('open');
+		});
+		document.addEventListener('click', function () {
+			avatarMenu.classList.remove('open');
+		});
+		if (avatarDrop) {
+			avatarDrop.addEventListener('click', function (e) { e.stopPropagation(); });
+		}
+	}
 })();
