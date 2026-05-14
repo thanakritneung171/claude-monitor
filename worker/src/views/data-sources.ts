@@ -1,11 +1,11 @@
 import css from './data-sources.css';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import type { IngestStats } from '../db/queries-extra';
 import { esc, fmtBkk, num } from '../lib/format';
 import { renderLayout, type NavKey } from './layout';
 
 export interface DataSourcesRenderInput {
-	user?: User;
+	user?: SessionUser;
 	stats: IngestStats;
 	ingestKeyMasked: string;
 	workerUrl: string;

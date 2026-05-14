@@ -2,7 +2,7 @@ import html from './dashboard.html';
 import css from './dashboard.css';
 import clientJs from './dashboard.client.js';
 
-import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, User } from '../types';
+import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, SessionUser } from '../types';
 import { esc, num, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, accountBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
 import { renderLayout } from './layout';
@@ -198,7 +198,7 @@ export interface RenderInput {
 	todayStr: string;
 	firstMonthStr: string;
 	firstYearStr: string;
-	user?: User;
+	user?: SessionUser;
 }
 
 export function renderDashboard(d: RenderInput): string {

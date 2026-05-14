@@ -1,5 +1,5 @@
 import css from './insights.css';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import type { TopPromptRow, AnomalyDay, CacheRatioRow } from '../db/queries-extra';
 import type { ByClient } from '../types';
 import { esc, num } from '../lib/format';
@@ -7,7 +7,7 @@ import { modelLabel } from '../lib/badge';
 import { renderLayout, type NavKey } from './layout';
 
 export interface InsightsRenderInput {
-	user?: User;
+	user?: SessionUser;
 	topPrompts: TopPromptRow[];
 	highestCostUser: { email: string; cost: number; calls: number } | null;
 	anomalies: AnomalyDay[];

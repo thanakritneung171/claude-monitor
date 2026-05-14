@@ -3,7 +3,7 @@ import pageCss from './accounts.css';
 import clientJs from './accounts.client.js';
 
 import type { AccountsListData } from '../db/queries';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import { esc, num } from '../lib/format';
 import { renderLayout } from './layout';
 import { modelLabel } from '../lib/badge';
@@ -12,7 +12,7 @@ import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTi
 export interface AccountsRenderInput {
 	data: AccountsListData;
 	period: '7d' | '30d' | '90d' | 'all';
-	user?: User;
+	user?: SessionUser;
 }
 
 function modelChip(model: string): string {

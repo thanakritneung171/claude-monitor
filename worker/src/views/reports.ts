@@ -1,10 +1,10 @@
 import css from './reports.css';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import { esc } from '../lib/format';
 import { todayBkk, firstOfMonthBkk } from '../lib/date';
 import { renderLayout, type NavKey } from './layout';
 
-export interface ReportsRenderInput { user?: User; }
+export interface ReportsRenderInput { user?: SessionUser; }
 
 const COLUMNS = [
 	{ key: 'ts',                    label: 'Timestamp' },

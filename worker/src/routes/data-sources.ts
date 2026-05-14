@@ -1,4 +1,4 @@
-import type { Env, User } from '../types';
+import type { Env, SessionUser } from '../types';
 import { fetchIngestStats } from '../db/queries-extra';
 import { getEffectiveIngestKey } from '../lib/auth';
 import { renderDataSources } from '../views/data-sources';
@@ -9,7 +9,7 @@ function maskKey(key: string): string {
 	return '••••••••' + key.slice(-4);
 }
 
-export async function handleDataSources(url: URL, env: Env, user?: User): Promise<Response> {
+export async function handleDataSources(url: URL, env: Env, user?: SessionUser): Promise<Response> {
 	const [stats, ingestKey] = await Promise.all([
 		fetchIngestStats(env),
 		getEffectiveIngestKey(env),

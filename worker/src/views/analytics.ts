@@ -1,12 +1,12 @@
 import css from './analytics.css';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import type { BucketPoint, HeatmapCell } from '../db/queries-extra';
 import { esc, num } from '../lib/format';
 import { modelLabel } from '../lib/badge';
 import { renderLayout } from './layout';
 
 export interface AnalyticsRenderInput {
-	user?: User;
+	user?: SessionUser;
 	period: '7d' | '30d' | '90d';
 	fromMs: number;
 	toMs: number;

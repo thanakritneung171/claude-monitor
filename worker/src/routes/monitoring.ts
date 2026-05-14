@@ -1,4 +1,4 @@
-import type { Env, User } from '../types';
+import type { Env, SessionUser } from '../types';
 import {
 	fetchErrorRate,
 	fetchThroughput,
@@ -7,7 +7,7 @@ import {
 } from '../db/queries-extra';
 import { renderMonitoring } from '../views/monitoring';
 
-export async function handleMonitoring(url: URL, env: Env, user?: User): Promise<Response> {
+export async function handleMonitoring(url: URL, env: Env, user?: SessionUser): Promise<Response> {
 	const now = Date.now();
 	const since24h = now - 24 * 60 * 60 * 1000;
 

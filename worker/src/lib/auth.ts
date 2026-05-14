@@ -1,58 +1,21 @@
-import type { Env, User, Session, Role } from '../types';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+import type { Env, SessionUser } from '../types';
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PBKDF2_ITERATIONS = 100_000;
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
-function bytesToHex(bytes: ArrayBuffer | Uint8Array): string {
-	const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-	return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+function base64UrlEncode(bytes: Uint8Array): string {
+	let s = '';
+	for (const b of bytes) s += String.fromCharCode(b);
+	return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function hexToBytes(hex: string): Uint8Array {
-	const len = Math.floor(hex.length / 2);
-	const out = new Uint8Array(len);
-	for (let i = 0; i < len; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-	return out;
-}
-
-async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
-	const key = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(password),
-		{ name: 'PBKDF2' },
-		false,
-		['deriveBits'],
-	);
-	const bits = await crypto.subtle.deriveBits(
-		{ name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
-		key,
-		256,
-	);
-	return new Uint8Array(bits);
-}
-
-export async function hashPassword(plain: string): Promise<string> {
-	const salt = crypto.getRandomValues(new Uint8Array(16));
-	const hash = await pbkdf2(plain, salt, PBKDF2_ITERATIONS);
-	return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${bytesToHex(hash)}`;
-}
-
-export async function verifyPassword(plain: string, stored: string): Promise<boolean> {
-	const parts = stored.split('$');
-	if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
-	const iterations = parseInt(parts[1], 10);
-	if (!Number.isFinite(iterations) || iterations < 1000) return false;
-	const salt = hexToBytes(parts[2]);
-	const expected = hexToBytes(parts[3]);
-	const actual = await pbkdf2(plain, salt, iterations);
-	if (actual.length !== expected.length) return false;
-	let diff = 0;
-	for (let i = 0; i < actual.length; i++) diff |= actual[i] ^ expected[i];
-	return diff === 0;
+function randomBase64Url(bytesLen: number): string {
+	return base64UrlEncode(crypto.getRandomValues(new Uint8Array(bytesLen)));
 }
 
 export function newSessionToken(): string {
-	return bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+	return randomBase64Url(32);
 }
 
 export function parseCookies(request: Request): Record<string, string> {
@@ -76,7 +39,7 @@ export function clearSidCookie(): string {
 	return 'sid=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
 }
 
-export interface CurrentUser extends User {
+export interface CurrentUser extends SessionUser {
 	sessionId: string;
 }
 
@@ -85,42 +48,24 @@ export async function getCurrentUser(request: Request, env: Env): Promise<Curren
 	const sid = cookies['sid'];
 	if (!sid) return null;
 	const row = await env.DB.prepare(
-		`SELECT u.id, u.email, u.password_hash, u.role, u.created_at, u.last_login_at, u.status,
-		        s.id AS session_id, s.expires_at
-		 FROM sessions s JOIN users u ON u.id = s.user_id
-		 WHERE s.id = ?`
-	).bind(sid).first<{
-		id: string; email: string; password_hash: string; role: string;
-		created_at: number; last_login_at: number | null; status: string;
-		session_id: string; expires_at: number;
-	}>();
+		`SELECT id, sub, email, expires_at FROM sessions WHERE id = ?`
+	).bind(sid).first<{ id: string; sub: string; email: string; expires_at: number }>();
 	if (!row) return null;
 	if (row.expires_at < Date.now()) {
 		await env.DB.prepare(`DELETE FROM sessions WHERE id = ?`).bind(sid).run();
 		return null;
 	}
-	if (row.status !== 'active') return null;
-	return {
-		id: row.id,
-		email: row.email,
-		password_hash: row.password_hash,
-		role: row.role as Role,
-		created_at: row.created_at,
-		last_login_at: row.last_login_at,
-		status: row.status as 'active' | 'disabled',
-		sessionId: row.session_id,
-	};
+	return { id: row.id, sub: row.sub, email: row.email, sessionId: row.id };
 }
 
-export async function createSession(env: Env, userId: string, request: Request): Promise<string> {
+export async function createSession(env: Env, sub: string, email: string, request: Request): Promise<string> {
 	const token = newSessionToken();
 	const now = Date.now();
 	const ip = request.headers.get('CF-Connecting-IP') ?? request.headers.get('X-Forwarded-For') ?? '';
 	const ua = request.headers.get('User-Agent') ?? '';
 	await env.DB.prepare(
-		`INSERT INTO sessions (id, user_id, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)`
-	).bind(token, userId, now, now + SESSION_TTL_MS, ip, ua).run();
-	await env.DB.prepare(`UPDATE users SET last_login_at = ? WHERE id = ?`).bind(now, userId).run();
+		`INSERT INTO sessions (id, sub, email, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	).bind(token, sub, email, now, now + SESSION_TTL_MS, ip, ua).run();
 	return token;
 }
 
@@ -142,7 +87,7 @@ function redirect(to: string): Response {
 	return new Response(null, { status: 302, headers: { Location: to } });
 }
 
-export async function requireUser(request: Request, env: Env, role: Role | null = null): Promise<GateResult> {
+export async function requireUser(request: Request, env: Env): Promise<GateResult> {
 	const user = await getCurrentUser(request, env);
 	if (!user) {
 		if (isHtmlRequest(request)) {
@@ -150,14 +95,18 @@ export async function requireUser(request: Request, env: Env, role: Role | null 
 			const next = encodeURIComponent(url.pathname + url.search);
 			return { user: null, response: redirect(`/login?next=${next}`) };
 		}
-		return { user: null, response: new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } }) };
-	}
-	if (role === 'admin' && user.role !== 'admin') {
-		return { user, response: null }; // Caller decides how to render 403 — typically a friendly page
+		return {
+			user: null,
+			response: new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), {
+				status: 401,
+				headers: { 'Content-Type': 'application/json' },
+			}),
+		};
 	}
 	return { user, response: null };
 }
 
+// ─── app_settings helpers (kept) ──────────────────────────────────────────────
 export async function getAppSetting(env: Env, key: string): Promise<string | null> {
 	const row = await env.DB.prepare(`SELECT value FROM app_settings WHERE key = ?`).bind(key).first<{ value: string }>();
 	return row?.value ?? null;
@@ -175,4 +124,106 @@ export async function getEffectiveIngestKey(env: Env): Promise<string> {
 	return dbKey || env.API_KEY || '';
 }
 
-export type { User, Session, Role };
+// ─── Logto OIDC helpers ───────────────────────────────────────────────────────
+function logtoBase(env: Env): string {
+	return env.LOGTO_ENDPOINT.replace(/\/+$/, '');
+}
+
+export function generateCodeVerifier(): string {
+	return randomBase64Url(64);
+}
+
+export async function codeChallengeS256(verifier: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+	return base64UrlEncode(new Uint8Array(digest));
+}
+
+export function buildAuthorizeUrl(env: Env, state: string, codeChallenge: string): string {
+	const u = new URL(`${logtoBase(env)}/oidc/auth`);
+	u.searchParams.set('client_id', env.LOGTO_APP_ID);
+	u.searchParams.set('redirect_uri', env.LOGTO_REDIRECT_URI);
+	u.searchParams.set('response_type', 'code');
+	u.searchParams.set('scope', 'openid profile email');
+	u.searchParams.set('state', state);
+	u.searchParams.set('code_challenge', codeChallenge);
+	u.searchParams.set('code_challenge_method', 'S256');
+	return u.toString();
+}
+
+export interface TokenResponse {
+	id_token: string;
+	access_token: string;
+	token_type: string;
+	expires_in?: number;
+}
+
+export async function exchangeCodeForTokens(env: Env, code: string, codeVerifier: string): Promise<TokenResponse> {
+	const body = new URLSearchParams({
+		grant_type: 'authorization_code',
+		code,
+		redirect_uri: env.LOGTO_REDIRECT_URI,
+		code_verifier: codeVerifier,
+		client_id: env.LOGTO_APP_ID,
+		client_secret: env.LOGTO_APP_SECRET,
+	});
+	const resp = await fetch(`${logtoBase(env)}/oidc/token`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+		body,
+	});
+	if (!resp.ok) {
+		const text = await resp.text();
+		throw new Error(`Logto token exchange failed: ${resp.status} ${text}`);
+	}
+	return resp.json() as Promise<TokenResponse>;
+}
+
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+function getJwks(env: Env) {
+	const url = `${logtoBase(env)}/oidc/jwks`;
+	let jwks = jwksCache.get(url);
+	if (!jwks) {
+		jwks = createRemoteJWKSet(new URL(url));
+		jwksCache.set(url, jwks);
+	}
+	return jwks;
+}
+
+export async function verifyIdToken(env: Env, idToken: string): Promise<{ sub: string; email: string | null }> {
+	const { payload } = await jwtVerify(idToken, getJwks(env), {
+		issuer: `${logtoBase(env)}/oidc`,
+		audience: env.LOGTO_APP_ID,
+	});
+	const sub = String(payload.sub ?? '');
+	if (!sub) throw new Error('id_token missing sub');
+	const email = typeof payload.email === 'string' ? payload.email : null;
+	return { sub, email };
+}
+
+export async function fetchUserinfoEmail(env: Env, accessToken: string): Promise<string | null> {
+	const resp = await fetch(`${logtoBase(env)}/oidc/me`, {
+		headers: { Authorization: `Bearer ${accessToken}` },
+	});
+	if (!resp.ok) return null;
+	const info = await resp.json() as { email?: string };
+	return typeof info.email === 'string' ? info.email : null;
+}
+
+export async function saveOauthState(env: Env, state: string, codeVerifier: string, nextPath: string): Promise<void> {
+	const expires = Date.now() + OAUTH_STATE_TTL_MS;
+	await env.DB.prepare(
+		`INSERT INTO oauth_state (state, code_verifier, next_path, expires_at) VALUES (?, ?, ?, ?)`
+	).bind(state, codeVerifier, nextPath, expires).run();
+}
+
+export async function consumeOauthState(env: Env, state: string): Promise<{ code_verifier: string; next_path: string } | null> {
+	const row = await env.DB.prepare(
+		`SELECT code_verifier, next_path, expires_at FROM oauth_state WHERE state = ?`
+	).bind(state).first<{ code_verifier: string; next_path: string; expires_at: number }>();
+	if (!row) return null;
+	await env.DB.prepare(`DELETE FROM oauth_state WHERE state = ?`).bind(state).run();
+	if (row.expires_at < Date.now()) return null;
+	return { code_verifier: row.code_verifier, next_path: row.next_path };
+}
+
+export type { SessionUser };

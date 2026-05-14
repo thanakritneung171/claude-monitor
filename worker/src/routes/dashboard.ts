@@ -1,9 +1,9 @@
-import type { Env, Filters, User } from '../types';
+import type { Env, Filters, SessionUser } from '../types';
 import { todayBkk, firstOfMonthBkk, firstOfYearBkk } from '../lib/date';
 import { fetchDashboardData } from '../db/queries';
 import { renderDashboard } from '../views/dashboard';
 
-export async function handleDashboard(url: URL, env: Env, user?: User): Promise<Response> {
+export async function handleDashboard(url: URL, env: Env, user?: SessionUser): Promise<Response> {
 	const todayStr      = todayBkk();
 	const firstMonthStr = firstOfMonthBkk();
 	const firstYearStr  = firstOfYearBkk();

@@ -9,16 +9,14 @@ import { handleDashboard } from './routes/dashboard';
 import { handleExport } from './routes/export';
 import { handleAccounts } from './routes/accounts';
 import { handleAccountDetail } from './routes/account-detail';
-import { handleLoginGet, handleLoginPost, handleLogout, handleMe } from './routes/auth';
+import { handleLoginGet, handleCallback, handleLogout, handleMe } from './routes/auth';
 import { handleAnalytics } from './routes/analytics';
 import { handleInsights } from './routes/insights';
 import { handleDataSources } from './routes/data-sources';
 import { handleMonitoring } from './routes/monitoring';
-import { handleUsersGet, handleUsersPost } from './routes/users';
 import { handleReports } from './routes/reports';
 import {
 	handleSettingsGet,
-	handleSettingsPassword,
 	handleSettingsKeyRotate,
 	handleSettingsNotifications,
 } from './routes/settings';
@@ -36,12 +34,12 @@ export default {
 		}
 
 		// ─── Public endpoints ──────────────────────────────────────────────────
-		if (pathname === '/log'     && method === 'POST') return handleLog(request, env);
-		if (pathname === '/health')                       return handleHealth();
-		if (pathname === '/login'   && method === 'GET')  return handleLoginGet(url, env, request);
-		if (pathname === '/login'   && method === 'POST') return handleLoginPost(request, env);
-		if (pathname === '/logout')                       return handleLogout(request, env);
-		if (pathname === '/api/me'  && method === 'GET')  return handleMe(request, env);
+		if (pathname === '/log'      && method === 'POST') return handleLog(request, env);
+		if (pathname === '/health')                        return handleHealth();
+		if (pathname === '/login'    && method === 'GET')  return handleLoginGet(url, env, request);
+		if (pathname === '/callback' && method === 'GET')  return handleCallback(url, env, request);
+		if (pathname === '/logout')                        return handleLogout(request, env);
+		if (pathname === '/api/me'   && method === 'GET')  return handleMe(request, env);
 
 		// ─── Authenticated routes ──────────────────────────────────────────────
 		const gate = await requireUser(request, env);
@@ -58,11 +56,7 @@ export default {
 		if (pathname === '/reports'      && method === 'GET') return handleReports(url, env, user);
 		if (pathname === '/export'       && method === 'GET') return handleExport(url, env);
 
-		if (pathname === '/users'        && method === 'GET')  return handleUsersGet(url, env, user);
-		if (pathname === '/users'        && method === 'POST') return handleUsersPost(request, env, user);
-
 		if (pathname === '/settings'                 && method === 'GET')  return handleSettingsGet(url, env, user);
-		if (pathname === '/settings/password'        && method === 'POST') return handleSettingsPassword(request, env, user);
 		if (pathname === '/settings/key-rotate'      && method === 'POST') return handleSettingsKeyRotate(request, env, user);
 		if (pathname === '/settings/notifications'   && method === 'POST') return handleSettingsNotifications(request, env, user);
 

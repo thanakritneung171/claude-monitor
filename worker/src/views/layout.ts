@@ -3,7 +3,7 @@ import sidebarCss from './sidebar.css';
 import sidebarJs from './sidebar.client.js';
 import sharedCss from './shared.css';
 
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import { esc } from '../lib/format';
 import { LOGO_DATA_URL } from '../lib/logo';
 
@@ -26,7 +26,7 @@ export type NavKey =
 
 export interface LayoutInput {
 	activeNav: NavKey;
-	user?: User;
+	user?: SessionUser;
 	pageTitle: string;
 	pageSubtitle?: string;
 	content: string;
@@ -39,15 +39,13 @@ export interface LayoutInput {
 // const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'insights', 'data_sources', 'monitoring', 'accounts', 'users', 'reports', 'settings'];
 const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'accounts', 'settings'];
 
-export function renderSidebar(activeNav: NavKey, user?: User): string {
+export function renderSidebar(activeNav: NavKey, user?: SessionUser): string {
 	let out = sidebarHtml;
 	for (const k of NAV_KEYS) out = out.split(`{{nav_${k}}}`).join(k === activeNav ? 'on' : '');
 	const email = user?.email ?? '';
 	const initial = email.trim().charAt(0).toUpperCase() || '?';
-	const role = user?.role ?? '';
 	out = out.split('{{userEmail}}').join(esc(email));
 	out = out.split('{{userInitial}}').join(esc(initial));
-	out = out.split('{{userRole}}').join(esc(role));
 	out = out.split('{{logoDataUrl}}').join(LOGO_DATA_URL);
 	return out;
 }
@@ -90,7 +88,6 @@ ${input.headExtra ?? ''}
 							<div class="avatar-drop-av" data-avatar-initial>${esc(userInitial)}</div>
 							<div class="avatar-drop-info">
 								<div class="avatar-drop-email">${esc(input.user?.email ?? '—')}</div>
-								<div class="avatar-drop-role">${esc(input.user?.role ?? '')}</div>
 							</div>
 						</div>
 						<div class="avatar-drop-sep"></div>
@@ -134,21 +131,3 @@ export function renderIncomingBlock(title: string, description: string): string 
 	</div>`;
 }
 
-export function render403(activeNav: NavKey, user?: User): string {
-	const body = `
-	<div style="background:var(--card);border:1px solid var(--line);border-radius:14px;padding:48px 32px;text-align:center;max-width:520px;margin:40px auto;">
-		<div style="width:64px;height:64px;border-radius:50%;background:#FFEEEE;color:#D14343;display:grid;place-items:center;margin:0 auto 16px;">
-			<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-		</div>
-		<h2 style="font-size:22px;font-weight:800;margin:0 0 8px;letter-spacing:-0.02em;">Admin access required</h2>
-		<p style="color:var(--ink-3);font-size:14px;margin:0 0 20px;">หน้านี้สงวนสำหรับผู้ดูแลระบบเท่านั้น ติดต่อ admin หากต้องการสิทธิ์ใช้งาน</p>
-		<a href="/" class="btn primary">กลับสู่ Dashboard</a>
-	</div>`;
-	return renderLayout({
-		activeNav,
-		user,
-		pageTitle: 'Access denied',
-		pageSubtitle: 'You do not have permission to view this page',
-		content: body,
-	});
-}

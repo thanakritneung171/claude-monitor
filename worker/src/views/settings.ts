@@ -1,18 +1,17 @@
 import css from './settings.css';
 import clientJs from './settings.client.js';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import { esc } from '../lib/format';
 import { renderLayout } from './layout';
 
 export interface SettingsRenderInput {
-	user?: User;
+	user?: SessionUser;
 	ingestKeyMasked: string;
 	notifyEmail: boolean;
 	notifyAnomaly: boolean;
 	notifyBudget: boolean;
 	version: string;
 	compatibilityDate: string;
-	totalUsers: number;
 	banner?: { kind: 'success' | 'error'; message: string };
 }
 
@@ -22,40 +21,26 @@ function switchHtml(key: string, on: boolean): string {
 }
 
 export function renderSettings(d: SettingsRenderInput): string {
-	const isAdmin = d.user?.role === 'admin';
 	const banner = d.banner ? `<div class="banner-${d.banner.kind === 'success' ? 'success' : 'error'}">${esc(d.banner.message)}</div>` : '';
 
 	const profileBlock = `
 		<div class="sb-section">
 			<h3>Profile</h3>
-			<p class="desc">บัญชี: <strong>${esc(d.user?.email ?? '')}</strong> · role: <strong>${esc(d.user?.role ?? '')}</strong></p>
-			<form method="post" action="/settings/password" class="s-form">
-				<label>Current password
-					<input class="input" type="password" name="current_password" required autocomplete="current-password">
-				</label>
-				<label>New password (≥ 8 chars)
-					<input class="input" type="password" name="new_password" required minlength="8" autocomplete="new-password">
-				</label>
-				<label>Confirm new password
-					<input class="input" type="password" name="confirm_password" required minlength="8" autocomplete="new-password">
-				</label>
-				<button type="submit" class="btn primary">Change password</button>
-			</form>
+			<p class="desc">บัญชี: <strong>${esc(d.user?.email ?? '')}</strong></p>
+			<p class="desc">การจัดการบัญชีและรหัสผ่านทำผ่านระบบ Logto (Single Sign-On)</p>
 		</div>`;
 
 	const apiKeyBlock = `
 		<div class="sb-section">
-			<h3>Ingest API key ${isAdmin ? '<span class="role-tag">admin</span>' : ''}</h3>
+			<h3>Ingest API key</h3>
 			<p class="desc">รหัสที่ proxy ใช้ส่งข้อมูลเข้าระบบ — เก็บไว้ในที่ปลอดภัย</p>
 			<div class="s-kv">
 				<div class="kv"><span class="k">Current key</span><span class="v">${esc(d.ingestKeyMasked)}</span></div>
 				<div class="kv"><span class="k">Used at</span><span class="v">POST /log</span></div>
 			</div>
-			${isAdmin ? `
-				<form method="post" action="/settings/key-rotate" onsubmit="return confirm('Rotate ingest key? proxy เก่าจะใช้ต่อไม่ได้จนกว่าจะอัปเดต config');" style="margin-top:14px;">
-					<button type="submit" class="btn danger">Rotate key</button>
-				</form>
-			` : `<div style="font-size:11px;color:var(--ink-3);margin-top:10px;">ต้องเป็น admin ถึงจะ rotate ได้</div>`}
+			<form method="post" action="/settings/key-rotate" onsubmit="return confirm('Rotate ingest key? proxy เก่าจะใช้ต่อไม่ได้จนกว่าจะอัปเดต config');" style="margin-top:14px;">
+				<button type="submit" class="btn danger">Rotate key</button>
+			</form>
 		</div>`;
 
 	const appearanceBlock = `
@@ -107,7 +92,7 @@ export function renderSettings(d: SettingsRenderInput): string {
 				<div class="kv"><span class="k">Version</span><span class="v">${esc(d.version)}</span></div>
 				<div class="kv"><span class="k">Compatibility date</span><span class="v">${esc(d.compatibilityDate)}</span></div>
 				<div class="kv"><span class="k">Timezone</span><span class="v">Asia/Bangkok (UTC+7)</span></div>
-				<div class="kv"><span class="k">Total users</span><span class="v">${d.totalUsers}</span></div>
+				<div class="kv"><span class="k">Identity provider</span><span class="v">Logto</span></div>
 				<div class="kv"><span class="k">Runtime</span><span class="v">Cloudflare Workers + D1</span></div>
 			</div>
 		</div>`;
@@ -130,7 +115,7 @@ export function renderSettings(d: SettingsRenderInput): string {
 		activeNav: 'settings',
 		user: d.user,
 		pageTitle: 'Settings',
-		pageSubtitle: 'จัดการบัญชี, API keys และการแจ้งเตือน',
+		pageSubtitle: 'จัดการ API keys และการแจ้งเตือน',
 		content,
 		pageCss: css,
 		pageJs: clientJs,

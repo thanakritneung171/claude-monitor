@@ -1,4 +1,4 @@
-import type { Env, User } from '../types';
+import type { Env, SessionUser } from '../types';
 import { fetchCostTimeseries, fetchHourOfDayHeatmap, type BucketPoint } from '../db/queries-extra';
 import { renderAnalytics } from '../views/analytics';
 
@@ -12,7 +12,7 @@ function rangeFor(p: Period): { fromMs: number; toMs: number; groupBy: 'day' | '
 	return { fromMs: now - 30 * day, toMs: now, groupBy: 'day' };
 }
 
-export async function handleAnalytics(url: URL, env: Env, user?: User): Promise<Response> {
+export async function handleAnalytics(url: URL, env: Env, user?: SessionUser): Promise<Response> {
 	const periodRaw = url.searchParams.get('period') ?? '30d';
 	const period: Period = (['7d', '30d', '90d'] as const).includes(periodRaw as Period) ? (periodRaw as Period) : '30d';
 	const { fromMs, toMs, groupBy } = rangeFor(period);

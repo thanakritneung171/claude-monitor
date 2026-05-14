@@ -1,4 +1,4 @@
-import type { Env, User } from '../types';
+import type { Env, SessionUser } from '../types';
 import { fetchAccountsList } from '../db/queries';
 import { renderAccounts, type AccountsRenderInput } from '../views/accounts';
 
@@ -13,7 +13,7 @@ function periodToRange(period: Period): { fromMs: number; toMs: number } {
 	return { fromMs: toMs - 30 * day, toMs };
 }
 
-export async function handleAccounts(url: URL, env: Env, user?: User): Promise<Response> {
+export async function handleAccounts(url: URL, env: Env, user?: SessionUser): Promise<Response> {
 	const periodRaw = url.searchParams.get('period') || '30d';
 	const period: Period = (['7d', '30d', '90d', 'all'] as const).includes(periodRaw as Period)
 		? (periodRaw as Period) : '30d';

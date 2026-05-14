@@ -1,12 +1,12 @@
 import css from './monitoring.css';
-import type { User } from '../types';
+import type { SessionUser } from '../types';
 import type { ErrorRatePoint, ThroughputPoint, ActiveSession, ErrorGroup } from '../db/queries-extra';
 import { esc, num } from '../lib/format';
 import { modelLabel, clientBadge } from '../lib/badge';
 import { renderLayout, type NavKey } from './layout';
 
 export interface MonitoringRenderInput {
-	user?: User;
+	user?: SessionUser;
 	errorRate: ErrorRatePoint[];
 	throughput: ThroughputPoint[];
 	activeSessions: ActiveSession[];

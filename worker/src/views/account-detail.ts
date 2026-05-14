@@ -3,7 +3,7 @@ import pageCss from './account-detail.css';
 import clientJs from './account-detail.client.js';
 
 import type { AccountDetailData } from '../db/queries';
-import type { ApiLog, User } from '../types';
+import type { ApiLog, SessionUser } from '../types';
 import { renderLayout } from './layout';
 import { esc, num, fmtBkk, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
@@ -25,7 +25,7 @@ export interface AccountDetailRenderInput {
 	period: '24h' | '7d' | '30d' | '90d' | 'all';
 	clientFilter: string;
 	modelFilter: string;
-	user?: User;
+	user?: SessionUser;
 }
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];

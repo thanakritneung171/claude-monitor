@@ -3,6 +3,10 @@
 export interface Env {
 	DB: D1Database;
 	API_KEY: string;
+	LOGTO_ENDPOINT: string;
+	LOGTO_APP_ID: string;
+	LOGTO_APP_SECRET: string;
+	LOGTO_REDIRECT_URI: string;
 }
 
 export interface ApiLog {
@@ -48,23 +52,9 @@ export interface ByClient { client: string; n: number; cost: number; }
 export interface ByAccount { account_email: string; n: number; cost: number; }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
-export type Role = 'admin' | 'viewer';
-
-export interface User {
-	id: string;
+// Identity is owned by Logto. We only keep the session row + the claims we need.
+export interface SessionUser {
+	id: string;     // sessionId (cookie value)
+	sub: string;    // Logto user id (from id_token `sub` claim)
 	email: string;
-	password_hash: string;
-	role: Role;
-	created_at: number;
-	last_login_at: number | null;
-	status: 'active' | 'disabled';
-}
-
-export interface Session {
-	id: string;
-	user_id: string;
-	created_at: number;
-	expires_at: number;
-	ip: string | null;
-	user_agent: string | null;
 }
