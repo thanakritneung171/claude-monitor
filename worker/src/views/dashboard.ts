@@ -134,7 +134,7 @@ function renderLogRows(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap
 			<td class="td-center">${clientBadge(r.client, cColorMap)}</td>
 			<td>${accountBadge(r.account_email)}</td>
 			<td class="td-center">${modelBadge(r.model, mColorMap)}</td>
-			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div><span class="more">เปิดดูเต็ม →</span></td>
+			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div>${r.prompt.length > 80 ? '<span class="more">เปิดดูเต็ม →</span>' : ''}</td>
 			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
 			<td class="num-cell"><span class="mono">${num(r.output_tokens)}</span></td>
 			<td class="num-cell cw"><span class="mono">${num(r.cache_creation_tokens)}</span></td>

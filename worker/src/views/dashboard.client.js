@@ -20,27 +20,30 @@ function displayToIso(dmy) {
 	});
 });
 
-// Convert dd/mm/yyyy → yyyy-mm-dd before submit
-document.getElementById('ff').addEventListener('submit', function() {
+// Convert dd/mm/yyyy → yyyy-mm-dd on all date inputs before submit
+function prepareDatesForSubmit() {
 	['df', 'dt'].forEach(function(id) {
 		var el = document.getElementById(id);
 		if (/^\d{2}\/\d{2}\/\d{4}$/.test(el.value)) el.value = displayToIso(el.value);
 	});
-});
+}
 
-// Period seg
+document.getElementById('ff').addEventListener('submit', prepareDatesForSubmit);
+
+// Period seg — set ISO directly since form submits immediately
 document.querySelectorAll('#periodSeg button').forEach(b => b.addEventListener('click', () => {
 	const v = b.dataset.period;
 	document.getElementById('period').value = v;
-	if (v === 'daily')   { document.getElementById('df').value = isoToDisplay(D_TODAY); document.getElementById('dt').value = isoToDisplay(D_TODAY); }
-	else if (v === 'monthly') { document.getElementById('df').value = isoToDisplay(D_MONTH); document.getElementById('dt').value = isoToDisplay(D_TODAY); }
-	else if (v === 'yearly')  { document.getElementById('df').value = isoToDisplay(D_YEAR);  document.getElementById('dt').value = isoToDisplay(D_TODAY); }
+	if (v === 'daily')        { document.getElementById('df').value = D_TODAY;  document.getElementById('dt').value = D_TODAY; }
+	else if (v === 'monthly') { document.getElementById('df').value = D_MONTH;  document.getElementById('dt').value = D_TODAY; }
+	else if (v === 'yearly')  { document.getElementById('df').value = D_YEAR;   document.getElementById('dt').value = D_TODAY; }
 	document.getElementById('ff').submit();
 }));
 
 // Rows per page seg
 document.querySelectorAll('#pageSizeSeg button').forEach(b => b.addEventListener('click', () => {
 	document.getElementById('pph').value = b.dataset.size;
+	prepareDatesForSubmit();
 	document.getElementById('ff').submit();
 }));
 
