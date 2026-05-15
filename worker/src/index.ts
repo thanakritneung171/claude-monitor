@@ -20,6 +20,7 @@ import {
 	handleSettingsKeyRotate,
 	handleSettingsNotifications,
 } from './routes/settings';
+import { handleClearDataGet, handleClearDataPost } from './routes/clear-data';
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
@@ -62,6 +63,9 @@ export default {
 		if (pathname === '/settings'                 && method === 'GET')  return handleSettingsGet(url, env, user);
 		if (pathname === '/settings/key-rotate'      && method === 'POST') return handleSettingsKeyRotate(request, env, user);
 		if (pathname === '/settings/notifications'   && method === 'POST') return handleSettingsNotifications(request, env, user);
+
+		if (pathname === '/clear-data' && method === 'GET')  return handleClearDataGet(url, env, user);
+		if (pathname === '/clear-data' && method === 'POST') return handleClearDataPost(request, env, user);
 
 		return json({ ok: false, error: 'Not Found' }, 404);
 	},
