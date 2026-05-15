@@ -11,11 +11,17 @@
 		</div>
 		<div class="field dates">
 			<label>Date From</label>
-			<input type="text" class="date-input" name="date_from" id="df" value="{{dateFromDisplay}}" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+			<div class="date-wrap">
+				<input type="text" class="date-input" id="df-txt" value="{{dateFromDisplay}}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+				<input type="date" class="date-real" name="date_from" id="df" value="{{dateFrom}}">
+			</div>
 		</div>
 		<div class="field dates">
 			<label>Date To</label>
-			<input type="text" class="date-input" name="date_to" id="dt" value="{{dateToDisplay}}" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+			<div class="date-wrap">
+				<input type="text" class="date-input" id="dt-txt" value="{{dateToDisplay}}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+				<input type="date" class="date-real" name="date_to" id="dt" value="{{dateTo}}">
+			</div>
 		</div>
 		<div class="field">
 			<label>Model</label>

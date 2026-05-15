@@ -1,34 +1,17 @@
-// Date format helpers: iso↔display
-function isoToDisplay(iso) {
-	var p = iso.split('-');
-	return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
-}
-function displayToIso(dmy) {
-	var p = dmy.split('/');
-	return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : dmy;
-}
-
-// Auto-format dd/mm/yyyy while typing
+// Date picker overlay: click anywhere → open native picker, then format to dd/mm/yyyy
 ['df', 'dt'].forEach(function(id) {
-	var el = document.getElementById(id);
-	el.addEventListener('input', function() {
-		var raw = el.value.replace(/\D/g, '').slice(0, 8);
-		var out = raw;
-		if (raw.length > 4) out = raw.slice(0, 2) + '/' + raw.slice(2, 4) + '/' + raw.slice(4);
-		else if (raw.length > 2) out = raw.slice(0, 2) + '/' + raw.slice(2);
-		el.value = out;
+	var realEl = document.getElementById(id);
+	var txtEl  = document.getElementById(id + '-txt');
+	if (!realEl || !txtEl) return;
+	realEl.addEventListener('click', function() {
+		try { realEl.showPicker(); } catch(e) {}
+	});
+	realEl.addEventListener('change', function() {
+		if (!realEl.value) return;
+		var p = realEl.value.split('-');
+		txtEl.value = p[2] + '/' + p[1] + '/' + p[0];
 	});
 });
-
-// Convert dd/mm/yyyy → yyyy-mm-dd on all date inputs before submit
-function prepareDatesForSubmit() {
-	['df', 'dt'].forEach(function(id) {
-		var el = document.getElementById(id);
-		if (/^\d{2}\/\d{2}\/\d{4}$/.test(el.value)) el.value = displayToIso(el.value);
-	});
-}
-
-document.getElementById('ff').addEventListener('submit', prepareDatesForSubmit);
 
 // Period seg — set ISO directly since form submits immediately
 document.querySelectorAll('#periodSeg button').forEach(b => b.addEventListener('click', () => {
@@ -43,7 +26,6 @@ document.querySelectorAll('#periodSeg button').forEach(b => b.addEventListener('
 // Rows per page seg
 document.querySelectorAll('#pageSizeSeg button').forEach(b => b.addEventListener('click', () => {
 	document.getElementById('pph').value = b.dataset.size;
-	prepareDatesForSubmit();
 	document.getElementById('ff').submit();
 }));
 

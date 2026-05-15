@@ -7,6 +7,21 @@
 .field-actions { display: flex; gap: 8px; margin-left: auto; }
 .field label { display: block; font-size: 16px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
 
+/* ─── Date wrap (text display + transparent date overlay) ───────────────── */
+.date-wrap { position: relative; }
+.date-real {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0.01;
+	cursor: pointer;
+	border: none;
+	background: transparent;
+	z-index: 2;
+	box-sizing: border-box;
+}
+
 /* ─── 6 gradient stat cards ─────────────────────────────────────────────── */
 .stats-6 {
 	margin-top: 14px;

@@ -8,14 +8,27 @@ import { renderLayout } from './layout';
 import { esc, num, fmtBkk, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
 import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTimeTh, compactNum } from '../lib/account';
-import { todayBkk, firstOfYearBkk } from '../lib/date';
+import { todayBkk } from '../lib/date';
 
-function dashboardYearlyUrl(email: string): string {
+function periodToDateFrom(period: string): string {
+	if (period === 'all') return '2000-01-01';
+	const now = new Date();
+	const day = 86400000;
+	const ms =
+		period === '24h' ? now.getTime() - day :
+		period === '7d'  ? now.getTime() - 7 * day :
+		period === '90d' ? now.getTime() - 90 * day :
+		                   now.getTime() - 30 * day;
+	return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+}
+
+function dashboardAllUrl(email: string, period: string): string {
 	const params = new URLSearchParams({
-		period: 'yearly',
-		date_from: firstOfYearBkk(),
+		date_from: periodToDateFrom(period),
 		date_to: todayBkk(),
 		account: email,
+		per_page: 'all',
+		page: '1',
 	});
 	return '/?' + params.toString();
 }
@@ -180,7 +193,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 			</div>
 		</div>
 		<div class="actions">
-			<a href="${dashboardYearlyUrl(d.email)}" class="btn primary">ดู Logs ทั้งหมด</a>
+			<a href="${dashboardAllUrl(d.email, period)}" class="btn primary">ดู Logs ทั้งหมด</a>
 		</div>
 	</section>
 
@@ -292,7 +305,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 	<div class="prompts-table">
 		<div class="table-head">
 			<h3>Recent activity</h3>
-			<a href="${dashboardYearlyUrl(d.email)}" class="btn">ดูทั้งหมด</a>
+			<a href="${dashboardAllUrl(d.email, period)}" class="btn">ดูทั้งหมด</a>
 		</div>
 		<div class="scroll">
 			<table>
