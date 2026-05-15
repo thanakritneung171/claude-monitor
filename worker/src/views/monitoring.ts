@@ -147,6 +147,6 @@ export function renderMonitoring(d: MonitoringRenderInput): string {
 		content,
 		pageCss: css,
 		title: 'Monitoring — SDB AI Insight',
-		pageJs: `setTimeout(function(){ location.reload(); }, 15000);`,
+		pageJs: `setTimeout(function(){ location.reload(); }, 180000);`,
 	});
 }

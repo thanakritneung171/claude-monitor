@@ -1,21 +1,49 @@
 import { esc } from './format';
 
+// 12 สีจาก 12 กลุ่ม hue ที่ต่างกันชัดเจน ไม่มีสีซ้ำกลุ่ม
 export const MODEL_PASTEL: string[] = [
-	'#6EE7B7', '#D8B4FE', '#FCA5A5', '#FCD34D', '#7DD3FC',
-	'#F9A8D4', '#86EFAC', '#C4B5FD', '#FED7AA', '#A5F3FC',
-	'#BEF264', '#F0ABFC', '#A7F3D0', '#CBD5E1', '#FDE68A',
+	'#FCA5A5', // red        0°
+	'#FDBA74', // orange    28°
+	'#FCD34D', // yellow    48°
+	'#BEF264', // lime      83°
+	'#86EFAC', // green    141°
+	'#5EEAD4', // teal     174°
+	'#7DD3FC', // sky      202°
+	'#818CF8', // indigo   234°
+	'#C4B5FD', // violet   262°
+	'#F0ABFC', // fuchsia  294°
+	'#F9A8D4', // pink     325°
+	'#CBD5E1', // slate    neutral
 ];
 export const CLIENT_DARK: string[] = [
-	'#2563EB', '#9333EA', '#DC2626', '#D97706', '#0891B2',
-	'#DB2777', '#16A34A', '#7C3AED', '#EA580C', '#0284C7',
-	'#4D7C0F', '#C026D3', '#0D9488', '#E11D48', '#4F46E5',
+	'#DC2626', // red        0°
+	'#EA580C', // orange    20°
+	'#CA8A04', // gold      47°
+	'#4D7C0F', // olive     83°
+	'#16A34A', // green    144°
+	'#0D9488', // teal     174°
+	'#2563EB', // blue     221°
+	'#7C3AED', // violet   265°
+	'#C026D3', // magenta  288°
+	'#DB2777', // pink     337°
+	'#64748B', // slate    neutral
 ];
 
-/** สร้าง color map จากชื่อทั้งหมด → ไม่มีสีซ้ำ */
+/** hash ชื่อ → index คงที่ ทุกหน้าชื่อเดียวกันได้สีเดียวกันเสมอ */
+function hashIndex(name: string, len: number): number {
+	let h = 5381;
+	for (let i = 0; i < name.length; i++) {
+		h = ((h << 5) + h + name.charCodeAt(i)) >>> 0;
+	}
+	return h % len;
+}
+
+/** สร้าง color map จากชื่อทั้งหมด โดยใช้ hash → สีคงที่ตามชื่อ ไม่ขึ้นกับ dataset */
 export function buildColorMap(names: string[], palette: string[]): Map<string, string> {
-	const unique = [...new Set(names)].sort();
 	const map = new Map<string, string>();
-	unique.forEach((name, i) => map.set(name, palette[i % palette.length]));
+	for (const name of new Set(names)) {
+		map.set(name, palette[hashIndex(name, palette.length)]);
+	}
 	return map;
 }
 
@@ -25,7 +53,7 @@ export function modelLabel(model: string): string {
 
 export function modelBadge(model: string, colorMap?: Map<string, string>): string {
 	const label = modelLabel(model);
-	const bg = colorMap?.get(label) ?? MODEL_PASTEL[0];
+	const bg = colorMap?.get(label) ?? MODEL_PASTEL[hashIndex(label, MODEL_PASTEL.length)];
 	return `<span class="chip model" style="background:${bg};color:#1F2937">${esc(label)}</span>`;
 }
 
@@ -36,7 +64,7 @@ export function normalizeClient(raw: string): string {
 
 export function clientBadge(client: string, colorMap?: Map<string, string>): string {
 	const n = normalizeClient(client);
-	const bg = colorMap?.get(n) ?? CLIENT_DARK[0];
+	const bg = colorMap?.get(n) ?? CLIENT_DARK[hashIndex(n, CLIENT_DARK.length)];
 	return `<span class="chip" style="background:${bg};color:#fff;box-shadow:0 2px 8px ${bg}55">${esc(n)}</span>`;
 }
 

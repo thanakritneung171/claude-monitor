@@ -30,9 +30,6 @@ export interface AccountDetailRenderInput {
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
 
-function buildLocalColorMap(items: { name: string }[], palette: string[]): Map<string, string> {
-	return buildColorMap(items.map(it => it.name), palette);
-}
 
 const TH_MONTH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -123,7 +120,7 @@ function topPromptsHtml(items: AccountDetailData['topPrompts']): string {
 	}).join('');
 }
 
-function recentRowsHtml(rows: ApiLog[]): string {
+function recentRowsHtml(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap: Map<string, string>): string {
 	if (rows.length === 0) {
 		return `<tr><td colspan="7" style="padding:32px;color:var(--ink-3);text-align:center;">ไม่พบรายการ</td></tr>`;
 	}
@@ -135,8 +132,8 @@ function recentRowsHtml(rows: ApiLog[]): string {
 				<div class="mono" style="font-size:13px;">${esc(time)}</div>
 				<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">${esc(date)}</div>
 			</td>
-			<td>${clientBadge(r.client)}</td>
-			<td>${modelBadge(r.model)}</td>
+			<td>${clientBadge(r.client, cColorMap)}</td>
+			<td>${modelBadge(r.model, mColorMap)}</td>
 			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div></td>
 			<td><span class="mono">${num(r.total_tokens)}</span></td>
 			<td><span class="mono">$${num(r.cost_usd, 5)}</span></td>
@@ -160,8 +157,10 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 
 	const byModelItems  = d.byModel.map(m => ({ name: modelLabel(m.model), n: m.n, cost: m.cost ?? 0 }));
 	const byClientItems = d.byClient.map(c => ({ name: c.client,           n: c.n, cost: c.cost ?? 0 }));
-	const mColorMap = buildLocalColorMap(byModelItems,  MODEL_PASTEL);
-	const cColorMap = buildLocalColorMap(byClientItems, CLIENT_DARK);
+	const allModelNames = [...new Set([...byModelItems.map(it => it.name), ...d.recentRows.map(r => modelLabel(r.model))])];
+	const allClientNames = [...new Set([...byClientItems.map(it => it.name), ...d.recentRows.map(r => normalizeClient(r.client))])];
+	const mColorMap = buildColorMap(allModelNames, MODEL_PASTEL);
+	const cColorMap = buildColorMap(allClientNames, CLIENT_DARK);
 
 	const clientOpts = d.allClients.map(c => `<option value="${esc(c)}"${clientFilter === c ? ' selected' : ''}>${esc(c)}</option>`).join('');
 	const modelOpts = d.allModels.map(m => `<option value="${esc(m)}"${modelFilter === m ? ' selected' : ''}>${esc(modelLabel(m))}</option>`).join('');
@@ -302,7 +301,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 						<th>Time</th><th>Client</th><th>Model</th><th>Prompt</th><th>Tokens</th><th>Cost</th><th></th>
 					</tr>
 				</thead>
-				<tbody>${recentRowsHtml(d.recentRows)}</tbody>
+				<tbody>${recentRowsHtml(d.recentRows, mColorMap, cColorMap)}</tbody>
 			</table>
 		</div>
 	</div>

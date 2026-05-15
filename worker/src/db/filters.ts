@@ -11,8 +11,8 @@ export function buildWhere(filters: Filters): { clause: string; params: (string 
 	if (filters.model)   { conds.push('model = ?');         params.push(filters.model); }
 	if (filters.account) { conds.push('account_email = ?'); params.push(filters.account); }
 	if (filters.client) {
-		if (filters.client === 'client') {
-			conds.push("client IN ('client','claude-code-cli','claude-desktop')");
+		if (filters.client === 'claude-code-cli, claude-desktop') {
+			conds.push("client IN ('claude-code-cli','claude-desktop')");
 		} else {
 			conds.push('client = ?');
 			params.push(filters.client);

@@ -30,13 +30,13 @@ export async function fetchDashboardData(env: Env, filters: Filters): Promise<Da
 		).bind(...params).first<Totals>(),
 		env.DB.prepare(`SELECT model, COUNT(*) as n, SUM(total_tokens) as tokens, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY model ORDER BY cost DESC`)
 			.bind(...params).all<ByModel>(),
-		env.DB.prepare(`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
+		env.DB.prepare(`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
 			.bind(...params).all<ByClient>(),
 		env.DB.prepare(`SELECT account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY account_email ORDER BY cost DESC`)
 			.bind(...params).all<ByAccount>(),
 		env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
 		env.DB.prepare(`SELECT DISTINCT account_email FROM api_logs WHERE account_email != '' ORDER BY account_email`).all<{ account_email: string }>(),
-		env.DB.prepare(`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
+		env.DB.prepare(`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
 	]);
 
 	return {
@@ -175,8 +175,8 @@ export async function fetchAccountDetail(
 	const conds = ['account_email = ?', 'ts >= ?', 'ts <= ?'];
 	const params: (string | number)[] = [email, fromMs, toMs];
 	if (clientFilter) {
-		if (clientFilter === 'client') {
-			conds.push("client IN ('client','claude-code-cli','claude-desktop')");
+		if (clientFilter === 'claude-code-cli, claude-desktop') {
+			conds.push("client IN ('claude-code-cli','claude-desktop')");
 		} else {
 			conds.push('client = ?');
 			params.push(clientFilter);
@@ -205,7 +205,7 @@ export async function fetchAccountDetail(
 			 FROM api_logs ${where} GROUP BY model ORDER BY cost DESC`
 		).bind(...params).all<ByModel>(),
 		env.DB.prepare(
-			`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client,
+			`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client,
 			        COUNT(*) as n, SUM(cost_usd) as cost
 			 FROM api_logs ${where} GROUP BY 1 ORDER BY cost DESC`
 		).bind(...params).all<ByClient>(),
@@ -223,7 +223,7 @@ export async function fetchAccountDetail(
 			`SELECT ts FROM api_logs WHERE account_email = ? AND ts >= ?`
 		).bind(email, heatmapSince).all<{ ts: number }>(),
 		env.DB.prepare(
-			`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'client' ELSE client END as client
+			`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client
 			 FROM api_logs WHERE account_email = ? AND client != '' ORDER BY client`
 		).bind(email).all<{ client: string }>(),
 		env.DB.prepare(

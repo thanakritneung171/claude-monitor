@@ -130,5 +130,5 @@ function tick() {
 }
 tick(); setInterval(tick, 1000);
 
-// Preserve filter params during auto-refresh
-setTimeout(() => location.replace(location.href), 15000);
+// Preserve filter params during auto-refresh (3 minutes)
+setTimeout(() => location.replace(location.href), 180000);

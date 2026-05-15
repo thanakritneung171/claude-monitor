@@ -2,7 +2,7 @@ import css from './analytics.css';
 import type { SessionUser } from '../types';
 import type { BucketPoint, HeatmapCell } from '../db/queries-extra';
 import { esc, num } from '../lib/format';
-import { modelLabel } from '../lib/badge';
+import { modelLabel, buildColorMap, MODEL_PASTEL } from '../lib/badge';
 import { renderLayout } from './layout';
 
 export interface AnalyticsRenderInput {
@@ -181,13 +181,17 @@ function sparkline(points: BucketPoint[], color: string): string {
 export function renderAnalytics(d: AnalyticsRenderInput): string {
 	const periodLink = (p: '7d' | '30d' | '90d') => `<a href="?period=${p}"${d.period === p ? ' class="on"' : ''}>${p}</a>`;
 
-	const perModelColors = ['#F47948', '#2563EB', '#7C3AED', '#0D9488', '#E11D48', '#F59E0B', '#06B6D4'];
-	const modelList = d.perModelSeries.slice(0, 7).map((m, i) => `
-		<div class="sparkline-row">
-			<div class="name"><span class="swatch" style="background:${perModelColors[i % perModelColors.length]}"></span>${esc(modelLabel(m.model))}</div>
-			<div class="spark">${sparkline(m.points, perModelColors[i % perModelColors.length])}</div>
+	const allModelLabels = d.perModelSeries.map(m => modelLabel(m.model));
+	const mColorMap = buildColorMap(allModelLabels, MODEL_PASTEL);
+	const modelList = d.perModelSeries.slice(0, 7).map(m => {
+		const label = modelLabel(m.model);
+		const color = mColorMap.get(label) ?? MODEL_PASTEL[0];
+		return `<div class="sparkline-row">
+			<div class="name"><span class="swatch" style="background:${color}"></span>${esc(label)}</div>
+			<div class="spark">${sparkline(m.points, color)}</div>
 			<div class="total">$${num(m.totalCost, 4)}</div>
-		</div>`).join('');
+		</div>`;
+	}).join('');
 
 	const summary = `
 		<section class="summary-strip">
