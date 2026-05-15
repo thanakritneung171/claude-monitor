@@ -14,6 +14,7 @@ import {
 	verifyIdToken,
 	fetchUserinfoEmail,
 	newSessionToken,
+	buildEndSessionUrl,
 } from '../lib/auth';
 import { json } from '../lib/format';
 
@@ -79,14 +80,15 @@ export async function handleCallback(url: URL, env: Env, request: Request): Prom
 		return new Response('Logto profile is missing an email address', { status: 502 });
 	}
 
-	const token = await createSession(env, sub, email, request);
+	const token = await createSession(env, sub, email, tokens.id_token, request);
 	return redirect(safeNext(stored.next_path), { 'Set-Cookie': buildSidCookie(token) });
 }
 
 export async function handleLogout(request: Request, env: Env): Promise<Response> {
 	const user = await getCurrentUser(request, env);
+	const idToken = user?.idToken ?? null;
 	if (user) await destroySession(env, user.sessionId);
-	return redirect('/login', { 'Set-Cookie': clearSidCookie() });
+	return redirect(buildEndSessionUrl(env, idToken), { 'Set-Cookie': clearSidCookie() });
 }
 
 export async function handleMe(request: Request, env: Env): Promise<Response> {

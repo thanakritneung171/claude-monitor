@@ -41,6 +41,7 @@ export function clearSidCookie(): string {
 
 export interface CurrentUser extends SessionUser {
 	sessionId: string;
+	idToken: string | null;
 }
 
 export async function getCurrentUser(request: Request, env: Env): Promise<CurrentUser | null> {
@@ -48,24 +49,24 @@ export async function getCurrentUser(request: Request, env: Env): Promise<Curren
 	const sid = cookies['sid'];
 	if (!sid) return null;
 	const row = await env.DB.prepare(
-		`SELECT id, sub, email, expires_at FROM sessions WHERE id = ?`
-	).bind(sid).first<{ id: string; sub: string; email: string; expires_at: number }>();
+		`SELECT id, sub, email, expires_at, id_token FROM sessions WHERE id = ?`
+	).bind(sid).first<{ id: string; sub: string; email: string; expires_at: number; id_token: string | null }>();
 	if (!row) return null;
 	if (row.expires_at < Date.now()) {
 		await env.DB.prepare(`DELETE FROM sessions WHERE id = ?`).bind(sid).run();
 		return null;
 	}
-	return { id: row.id, sub: row.sub, email: row.email, sessionId: row.id };
+	return { id: row.id, sub: row.sub, email: row.email, sessionId: row.id, idToken: row.id_token };
 }
 
-export async function createSession(env: Env, sub: string, email: string, request: Request): Promise<string> {
+export async function createSession(env: Env, sub: string, email: string, idToken: string, request: Request): Promise<string> {
 	const token = newSessionToken();
 	const now = Date.now();
 	const ip = request.headers.get('CF-Connecting-IP') ?? request.headers.get('X-Forwarded-For') ?? '';
 	const ua = request.headers.get('User-Agent') ?? '';
 	await env.DB.prepare(
-		`INSERT INTO sessions (id, sub, email, created_at, expires_at, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)`
-	).bind(token, sub, email, now, now + SESSION_TTL_MS, ip, ua).run();
+		`INSERT INTO sessions (id, sub, email, created_at, expires_at, ip, user_agent, id_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	).bind(token, sub, email, now, now + SESSION_TTL_MS, ip, ua, idToken).run();
 	return token;
 }
 
@@ -207,6 +208,14 @@ export async function fetchUserinfoEmail(env: Env, accessToken: string): Promise
 	if (!resp.ok) return null;
 	const info = await resp.json() as { email?: string };
 	return typeof info.email === 'string' ? info.email : null;
+}
+
+export function buildEndSessionUrl(env: Env, idToken: string | null): string {
+	const u = new URL(`${logtoBase(env)}/oidc/session/end`);
+	u.searchParams.set('client_id', env.LOGTO_APP_ID);
+	u.searchParams.set('post_logout_redirect_uri', env.LOGTO_POST_LOGOUT_REDIRECT_URI);
+	if (idToken) u.searchParams.set('id_token_hint', idToken);
+	return u.toString();
 }
 
 export async function saveOauthState(env: Env, state: string, codeVerifier: string, nextPath: string): Promise<void> {
