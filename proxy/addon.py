@@ -51,17 +51,22 @@ if EMAIL_FILTER_ENABLED:
 else:
     print("[claude-monitor] email filter OFF — logging all accounts")
 
-# Account info cache — auto-populated by ClaudeAccountSniffer from claude.ai API responses.
-# If no email is detected (e.g., API key users), account_email stays empty.
-_ACCOUNT = {
-    "email":    "",
-    "name":     "",
-    "uuid":     "",
-    "org_uuid": "",
-}
+# Per-source-IP account cache. Was a single global before — broke on shared
+# proxy deployments because the latest claude.ai auth response from any user
+# would clobber the email for everyone. Keyed by client IP so each connecting
+# host carries its own identity; ClaudeAccountSniffer rewrites the slot when
+# the user switches account, so one person can have multiple accounts.
+_ACCOUNT_BY_IP: dict[str, dict] = {}
 
-def current_email() -> str:
-    return _ACCOUNT["email"]
+def _client_ip(flow) -> str:
+    try:
+        peer = flow.client_conn.peername
+        return peer[0] if peer else ""
+    except Exception:
+        return ""
+
+def current_email(flow) -> str:
+    return _ACCOUNT_BY_IP.get(_client_ip(flow), {}).get("email", "")
 
 HOSTNAME = socket.gethostname()
 
@@ -483,15 +488,15 @@ class ClaudeAPIMonitor:
             except Exception:
                 return
 
-        self._log(client, model, prompt, parsed)
+        self._log(flow, client, model, prompt, parsed)
 
-    def _log(self, client, model, prompt, parsed):
+    def _log(self, flow, client, model, prompt, parsed):
         inp = parsed["input_tokens"]
         out = parsed["output_tokens"]
         cr  = parsed.get("cache_read_tokens", 0)
         cw  = parsed.get("cache_creation_tokens", 0)
 
-        email = current_email()
+        email = current_email(flow)
         if not _should_log(email):
             print(f"[claude-api] SKIP (filter) | {client} | {model} | email={email or '(none)'}")
             return
@@ -583,7 +588,7 @@ class ClaudeDesktopMonitor:
         cr  = parsed.get("cache_read_tokens", 0)
         cw  = parsed.get("cache_creation_tokens", 0)
 
-        email = current_email()
+        email = current_email(flow)
         if not _should_log(email):
             print(f"[claude-desktop] SKIP (filter) | {model} | email={email or '(none)'}")
             return
@@ -753,14 +758,18 @@ class ClaudeAccountSniffer:
 
         info = _extract_current_user(data)
 
-        # Whitelisted endpoint → trust + cache
+        # Whitelisted endpoint → trust + cache (scoped to this client's IP)
         if info and any(rgx.match(path) for rgx in self.WHITELIST_RES):
+            ip    = _client_ip(flow)
+            slot  = _ACCOUNT_BY_IP.get(ip, {})
             email = info["email"]
-            if email != _ACCOUNT["email"]:
-                _ACCOUNT["email"] = email
-                _ACCOUNT["name"]  = info.get("name", "") or _ACCOUNT["name"]
-                _ACCOUNT["uuid"]  = info.get("uuid", "") or _ACCOUNT["uuid"]
-                print(f"[claude-account] ✓ detected email: {email} (from {path})")
+            if email != slot.get("email"):
+                _ACCOUNT_BY_IP[ip] = {
+                    "email": email,
+                    "name":  info.get("name", "") or slot.get("name", ""),
+                    "uuid":  info.get("uuid", "") or slot.get("uuid", ""),
+                }
+                print(f"[claude-account] ✓ detected email: {email} (from {path}, ip={ip})")
             return
 
         # Non-whitelisted but contains a current-user-shaped email → log for review
@@ -803,6 +812,7 @@ class ClaudeBridgeMonitor:
         client = _detect_client(flow.request.headers)
         self._sessions[id(flow)] = {
             "client":  client,
+            "src_ip":  _client_ip(flow),
             "pending": {},        # req_id -> req state
         }
         print(f"[claude-bridge] WS opened path={flow.request.path} client={client}")
@@ -928,7 +938,7 @@ class ClaudeBridgeMonitor:
         inp, out = req["inp"], req["out"]
         cr, cw   = req["cr"],  req["cw"]
 
-        email = current_email()
+        email = _ACCOUNT_BY_IP.get(sess["src_ip"], {}).get("email", "")
         if not _should_log(email):
             print(f"[claude-bridge] SKIP (filter) | {sess['client']} | {model} | email={email or '(none)'}")
             return
