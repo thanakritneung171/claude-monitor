@@ -65,7 +65,11 @@ export function normalizeClient(raw: string): string {
 export function clientBadge(client: string, colorMap?: Map<string, string>): string {
 	const n = normalizeClient(client);
 	const bg = colorMap?.get(n) ?? CLIENT_DARK[hashIndex(n, CLIENT_DARK.length)];
-	return `<span class="chip" style="background:${bg};color:#fff;box-shadow:0 2px 8px ${bg}55">${esc(n)}</span>`;
+	const label = n.includes(', ')
+		? n.split(', ').map(p => esc(p)).join('<br>')
+		: esc(n);
+	const extra = n.includes(', ') ? 'text-align:center;line-height:1.2;' : '';
+	return `<span class="chip" style="background:${bg};color:#fff;box-shadow:0 2px 8px ${bg}55;${extra}">${label}</span>`;
 }
 
 export function accountBadge(email: string): string {
