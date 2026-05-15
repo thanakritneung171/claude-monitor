@@ -7,6 +7,7 @@ export interface Env {
 	LOGTO_APP_ID: string;
 	LOGTO_APP_SECRET: string;
 	LOGTO_REDIRECT_URI: string;
+	LOGTO_POST_LOGOUT_REDIRECT_URI: string;
 }
 
 export interface ApiLog {
