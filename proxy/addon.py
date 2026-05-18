@@ -848,6 +848,37 @@ class ClaudeBridgeMonitor:
             ct = data.get("client_type", "")
             if ct in self._CLIENT_MAP:
                 sess["client"] = self._CLIENT_MAP[ct]
+
+            # Pull email from connect payload — Claude Code (subscription)
+            # logs in via the bridge WS instead of claude.ai HTTP, so the
+            # HTTP-based ClaudeAccountSniffer never sees the email. The
+            # connect handshake carries account info, e.g.:
+            #   {"type":"connect","client_type":"claude-code",
+            #    "account":{"email_address":"x@y.com","uuid":"..."}}
+            # Field name varies — try the common shapes.
+            acct_blob = (
+                data.get("account") or
+                data.get("user") or
+                data.get("auth") or
+                {}
+            )
+            bridge_email = (
+                acct_blob.get("email_address") or
+                acct_blob.get("email") or
+                data.get("email_address") or
+                data.get("email") or
+                ""
+            )
+            if _looks_like_email(bridge_email):
+                ip  = sess["src_ip"]
+                old = _ACCOUNT_BY_IP.get(ip, {}).get("email", "")
+                if bridge_email != old:
+                    _ACCOUNT_BY_IP[ip] = {
+                        "email": bridge_email,
+                        "name":  acct_blob.get("full_name") or acct_blob.get("name") or "",
+                        "uuid":  acct_blob.get("uuid") or "",
+                    }
+                    print(f"[claude-bridge] ✓ account switch detected: {old or '(none)'} → {bridge_email}")
             return
 
         if t in ("ping", "pong", "error"):
