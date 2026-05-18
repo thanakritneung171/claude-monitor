@@ -15,18 +15,121 @@ if (-not (Test-Path $caCert)) {
 
     if (-not (Get-Command mitmdump -ErrorAction SilentlyContinue)) {
         Write-Host "  mitmdump not found - trying pip install mitmproxy..." -ForegroundColor Yellow
-        if (-not (Get-Command pip -ErrorAction SilentlyContinue)) {
-            Write-Error "pip not found. Install Python from https://python.org first, then re-run."
+
+        function Test-RealPython {
+            # Microsoft Store stub python.exe in %LOCALAPPDATA%\Microsoft\WindowsApps\ exits silently without running code.
+            # A real interpreter prints "OK" and returns 0.
+            param([string[]]$Cmd)
+            try {
+                $out = & $Cmd[0] @($Cmd | Select-Object -Skip 1) -c "print('OK')" 2>$null
+                return ($LASTEXITCODE -eq 0 -and ($out -join '') -match 'OK')
+            } catch { return $false }
+        }
+        function Get-PipRunner {
+            if (Get-Command pip -ErrorAction SilentlyContinue) {
+                # Check the python that owns this pip is real
+                try { & pip --version 2>$null | Out-Null; if ($LASTEXITCODE -eq 0) { return ,@('pip') } } catch {}
+            }
+            if (Get-Command py     -ErrorAction SilentlyContinue) { if (Test-RealPython @('py'))     { return ,@('py','-m','pip') } }
+            if (Get-Command python -ErrorAction SilentlyContinue) { if (Test-RealPython @('python')) { return ,@('python','-m','pip') } }
+            return $null
+        }
+        function Get-PythonRunner {
+            if (Get-Command py     -ErrorAction SilentlyContinue) { if (Test-RealPython @('py'))     { return ,@('py') } }
+            if (Get-Command python -ErrorAction SilentlyContinue) { if (Test-RealPython @('python')) { return ,@('python') } }
+            return $null
+        }
+
+        function Install-Winget {
+            $stage = Join-Path $env:TEMP "winget-bootstrap-$([Guid]::NewGuid().ToString('N').Substring(0,8))"
+            New-Item -ItemType Directory -Path $stage -Force | Out-Null
+            try {
+                $vclibs = Join-Path $stage 'vclibs.appx'
+                Invoke-WebRequest -Uri 'https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx' -OutFile $vclibs -UseBasicParsing
+                try { Add-AppxPackage -Path $vclibs -ErrorAction Stop } catch { Write-Host "    VCLibs: $_" -ForegroundColor DarkGray }
+
+                $xaml = Join-Path $stage 'xaml.appx'
+                Invoke-WebRequest -Uri 'https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.8.6/Microsoft.UI.Xaml.2.8.x64.appx' -OutFile $xaml -UseBasicParsing
+                try { Add-AppxPackage -Path $xaml -ErrorAction Stop } catch { Write-Host "    UI.Xaml: $_" -ForegroundColor DarkGray }
+
+                # Resolve latest winget msixbundle from GitHub releases
+                $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' -UseBasicParsing
+                $msixUrl = ($release.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1).browser_download_url
+                if (-not $msixUrl) { throw 'msixbundle URL not found in latest winget release' }
+
+                $bundle = Join-Path $stage 'winget.msixbundle'
+                Invoke-WebRequest -Uri $msixUrl -OutFile $bundle -UseBasicParsing
+                Add-AppxPackage -Path $bundle -ErrorAction Stop
+
+                # winget lives in %LOCALAPPDATA%\Microsoft\WindowsApps which is usually on PATH; refresh just in case.
+                $machinePath = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+                $userPath1   = [Environment]::GetEnvironmentVariable('PATH', 'User')
+                $env:PATH    = "$machinePath;$userPath1"
+            } finally {
+                Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
+            }
+        }
+
+        $pip = Get-PipRunner
+        if (-not $pip) {
+            Write-Host "  Python not found - attempting auto-install via winget..." -ForegroundColor Yellow
+            if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+                Write-Host "  winget not found - bootstrapping winget first..." -ForegroundColor Yellow
+                try { Install-Winget } catch {
+                    Write-Error "Failed to bootstrap winget: $_. Install Python 3.12 manually from https://python.org then re-run."
+                    return
+                }
+                if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+                    Write-Error "winget still not on PATH after bootstrap. Open a new terminal and re-run, or install Python 3.12 manually from https://python.org."
+                    return
+                }
+                Write-Host "  winget installed." -ForegroundColor Green
+            }
+            & winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements --silent
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "winget failed to install Python (exit $LASTEXITCODE). Install Python 3.12 manually from https://python.org then re-run."
+                return
+            }
+
+            # winget writes the new install into User PATH but the current process won't pick it up. Rebuild $env:PATH from the registry.
+            $machinePath = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+            $userPath0   = [Environment]::GetEnvironmentVariable('PATH', 'User')
+            $env:PATH    = "$machinePath;$userPath0"
+
+            $pip = Get-PipRunner
+            if (-not $pip) {
+                Write-Error "Python installed via winget but not visible on PATH yet. Open a new terminal and re-run this installer."
+                return
+            }
+            Write-Host "  Python installed via winget." -ForegroundColor Green
+        }
+
+        Write-Host "  Running: $($pip -join ' ') install mitmproxy" -ForegroundColor DarkGray
+        & $pip[0] @($pip | Select-Object -Skip 1) install mitmproxy
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "pip install mitmproxy failed (exit $LASTEXITCODE). Scroll up for pip's error output, then re-run."
             return
         }
-        pip install mitmproxy
 
         if (-not (Get-Command mitmdump -ErrorAction SilentlyContinue)) {
             # pip's Scripts dir often isn't on PATH (Microsoft Store Python installs to %APPDATA%\Python\Python3xx\Scripts).
             # Probe both global and per-user Scripts dirs, then add to current session + persistent User PATH.
+            $py = Get-PythonRunner
             $probe = "import sysconfig, os; print(sysconfig.get_path('scripts')); print(sysconfig.get_path('scripts', os.name + '_user'))"
             $dirs = @()
-            try { $dirs = (& python -c $probe 2>$null) -split "`r?`n" | Where-Object { $_.Trim() } } catch {}
+            if ($py) {
+                try { $dirs = (& $py[0] @($py | Select-Object -Skip 1) -c $probe 2>$null) -split "`r?`n" | Where-Object { $_.Trim() } } catch {}
+            }
+            # Fallback: probe common Windows install locations in case sysconfig probe failed
+            $dirs += @(
+                "$env:LOCALAPPDATA\Programs\Python\Python312\Scripts",
+                "$env:LOCALAPPDATA\Programs\Python\Python311\Scripts",
+                "$env:LOCALAPPDATA\Programs\Python\Python310\Scripts",
+                "$env:APPDATA\Python\Python312\Scripts",
+                "$env:APPDATA\Python\Python311\Scripts",
+                "$env:APPDATA\Python\Python310\Scripts"
+            )
+            $dirs += Get-ChildItem "$env:LOCALAPPDATA\Packages\PythonSoftwareFoundation.Python.*\LocalCache\local-packages\Python*\Scripts" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
 
             $scriptsDir = $null
             foreach ($d in $dirs) {
