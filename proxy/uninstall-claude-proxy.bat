@@ -7,7 +7,7 @@ pause
 exit /b %RC%
 #PSCODE
 $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
-$keysToRemove = @('HTTPS_PROXY', 'HTTP_PROXY', 'NODE_EXTRA_CA_CERTS')
+$keysToRemove = @('HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS')
 
 if (-not (Test-Path $settingsPath)) {
     Write-Host "No settings.json at $settingsPath - nothing to uninstall." -ForegroundColor Yellow
@@ -48,7 +48,7 @@ if ($removed.Count -gt 0) {
     [System.IO.File]::WriteAllText($settingsPath, $json, $utf8NoBom)
 }
 
-$envKeys = @('HTTPS_PROXY', 'HTTP_PROXY', 'NODE_EXTRA_CA_CERTS',
+$envKeys = @('HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'NODE_EXTRA_CA_CERTS',
              'REQUESTS_CA_BUNDLE', 'SSL_CERT_FILE')
 $clearedEnv = @()
 foreach ($key in $envKeys) {
@@ -56,6 +56,16 @@ foreach ($key in $envKeys) {
         [Environment]::SetEnvironmentVariable($key, $null, 'User')
         $clearedEnv += $key
     }
+}
+
+# Clear Windows system proxy bypass (WinINET ProxyOverride). install-claude-proxy
+# sets this; on uninstall we wipe it back to empty so the registry is clean.
+$regPath          = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+$clearedBypass    = $false
+$currentOverride  = (Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue).ProxyOverride
+if ($currentOverride) {
+    Set-ItemProperty -Path $regPath -Name ProxyOverride -Value ""
+    $clearedBypass = $true
 }
 
 Write-Host ""
@@ -71,6 +81,11 @@ if ($clearedEnv.Count -gt 0) {
     Write-Host "  User env vars cleared:      $($clearedEnv -join ', ')"
 } else {
     Write-Host "  User env vars:              none were set"
+}
+if ($clearedBypass) {
+    Write-Host "  WinINET ProxyOverride:      cleared (was: $currentOverride)"
+} else {
+    Write-Host "  WinINET ProxyOverride:      already empty"
 }
 Write-Host ""
 Write-Host "  Fully QUIT Claude Desktop and reopen for env changes to take effect." -ForegroundColor Yellow
