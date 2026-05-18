@@ -10,6 +10,14 @@ $proxyUrl     = "http://10.10.84.1:8081"
 $caCert       = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
 
+# Internal hosts to bypass proxy. Without these, requests to internal services
+# (GitLab on 10.16.x.x, etc.) hit mitmproxy on 10.10.84.1 and time out because
+# that proxy can't route back to the internal subnet.
+#   - Windows ProxyOverride uses semicolons + supports the <local> token
+#   - NO_PROXY env var uses commas + supports CIDR in Node 16+/curl 7.86+
+$proxyBypassWin     = "10.16.*;<local>"
+$proxyBypassNoProxy = "10.16.0.0/16,localhost,127.0.0.1"
+
 if (-not (Test-Path $caCert)) {
     Write-Host "CA cert not found. Generating via mitmdump..." -ForegroundColor Yellow
 
@@ -212,25 +220,34 @@ if ($settings.PSObject.Properties.Name -contains 'env') {
 
 Set-Prop $envBlock 'HTTPS_PROXY'         $proxyUrl
 Set-Prop $envBlock 'HTTP_PROXY'          $proxyUrl
+Set-Prop $envBlock 'NO_PROXY'            $proxyBypassNoProxy
 Set-Prop $envBlock 'NODE_EXTRA_CA_CERTS' $caCert
 
 $json      = $settings | ConvertTo-Json -Depth 20
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($settingsPath, $json, $utf8NoBom)
 
-[Environment]::SetEnvironmentVariable('HTTPS_PROXY',         $proxyUrl, 'User')
-[Environment]::SetEnvironmentVariable('HTTP_PROXY',          $proxyUrl, 'User')
-[Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', $caCert,   'User')
-[Environment]::SetEnvironmentVariable('REQUESTS_CA_BUNDLE',  $caCert,   'User')
-[Environment]::SetEnvironmentVariable('SSL_CERT_FILE',       $caCert,   'User')
+[Environment]::SetEnvironmentVariable('HTTPS_PROXY',         $proxyUrl,           'User')
+[Environment]::SetEnvironmentVariable('HTTP_PROXY',          $proxyUrl,           'User')
+[Environment]::SetEnvironmentVariable('NO_PROXY',            $proxyBypassNoProxy, 'User')
+[Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', $caCert,             'User')
+[Environment]::SetEnvironmentVariable('REQUESTS_CA_BUNDLE',  $caCert,             'User')
+[Environment]::SetEnvironmentVariable('SSL_CERT_FILE',       $caCert,             'User')
+
+# Windows system proxy bypass — Edge/Chrome/.NET apps use WinINET registry,
+# not env vars, so they need a separate ProxyOverride entry.
+$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty -Path $regPath -Name ProxyOverride -Value $proxyBypassWin
 
 Write-Host ""
 Write-Host "  Claude proxy config installed" -ForegroundColor Green
 Write-Host "  -------------------------------------" -ForegroundColor DarkGray
 Write-Host "  Claude Code settings.json: $settingsPath"
-Write-Host "  Persistent user env vars:  HTTPS_PROXY, HTTP_PROXY, NODE_EXTRA_CA_CERTS,"
-Write-Host "                             REQUESTS_CA_BUNDLE, SSL_CERT_FILE"
+Write-Host "  Persistent user env vars:  HTTPS_PROXY, HTTP_PROXY, NO_PROXY,"
+Write-Host "                             NODE_EXTRA_CA_CERTS, REQUESTS_CA_BUNDLE, SSL_CERT_FILE"
 Write-Host "  Proxy URL:                 $proxyUrl"
+Write-Host "  Proxy bypass (NO_PROXY):   $proxyBypassNoProxy"
+Write-Host "  Proxy bypass (WinINET):    $proxyBypassWin"
 Write-Host "  CA cert:                   $caCert"
 Write-Host ""
 Write-Host "  IMPORTANT: Fully QUIT Claude Desktop (system tray -> Quit) and reopen" -ForegroundColor Yellow
