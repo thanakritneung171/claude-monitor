@@ -15,6 +15,7 @@ export interface ApiLog {
 	ts: number;
 	client: string;
 	account_email: string;
+	client_ip: string;
 	machine_name: string;
 	model: string;
 	prompt: string;
@@ -26,6 +27,14 @@ export interface ApiLog {
 	cache_read_tokens: number;
 	total_tokens: number;
 	cost_usd: number;
+}
+
+export interface IpIdentity {
+	ip: string;
+	email: string;
+	name: string;
+	uuid: string;
+	updated_ms: number;
 }
 
 export interface Filters {

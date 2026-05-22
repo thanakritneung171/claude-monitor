@@ -1,4 +1,5 @@
 import { esc } from './format';
+import { displayAccount, isIpIdentity } from './account';
 
 // 12 สีจาก 12 กลุ่ม hue ที่ต่างกันชัดเจน ไม่มีสีซ้ำกลุ่ม
 export const MODEL_PASTEL: string[] = [
@@ -72,6 +73,9 @@ export function clientBadge(client: string, colorMap?: Map<string, string>): str
 	return `<span class="chip" style="background:${bg};color:#fff;box-shadow:0 2px 8px ${bg}55;${extra}">${label}</span>`;
 }
 
-export function accountBadge(email: string): string {
-	return `<span class="chip acct">${esc(email || '—')}</span>`;
+export function accountBadge(email: string, clientIp = ''): string {
+	const display = displayAccount(email, clientIp);
+	const ipFallback = isIpIdentity(display);
+	const cls = ipFallback ? 'chip acct ip-fallback' : 'chip acct';
+	return `<span class="${cls}">${esc(display)}</span>`;
 }

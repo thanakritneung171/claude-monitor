@@ -68,7 +68,7 @@ function openBreakdownModal(cat) {
 			}
 			const pct = Math.max(2, ((it.cost || 0) / max) * 100);
 			var linkBtn = (cat === 'account' && it.name && it.name !== '—')
-				? '<a href="/account?email=' + encodeURIComponent(it.name) + '" class="bar-link-btn">ดูรายละเอียด →</a>'
+				? '<a href="/account?identity=' + encodeURIComponent(it.name) + '" class="bar-link-btn">ดูรายละเอียด →</a>'
 				: '';
 			return '<div class="bar-row">' +
 				'<div class="name">' + nameHtml + '</div>' +

@@ -1,6 +1,8 @@
 import type { Env, SessionUser } from '../types';
 import { dateToMs, todayBkk } from '../lib/date';
 import { renderClearData } from '../views/clear-data';
+import { isIpIdentity, stripIpPrefix } from '../lib/account';
+import { IDENTITY_EXPR } from '../db/filters';
 
 const htmlResponse = (body: string) =>
 	new Response(body, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
@@ -16,7 +18,7 @@ interface DistinctOptions {
 async function loadOptions(env: Env): Promise<DistinctOptions> {
 	const [clientsRes, accountsRes, modelsRes, logCountRow, sessCountRow] = await Promise.all([
 		env.DB.prepare(`SELECT DISTINCT client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
-		env.DB.prepare(`SELECT DISTINCT account_email FROM api_logs WHERE account_email != '' ORDER BY account_email`).all<{ account_email: string }>(),
+		env.DB.prepare(`SELECT DISTINCT ${IDENTITY_EXPR} as account_email FROM api_logs WHERE NOT (account_email = '' AND client_ip = '') ORDER BY 1`).all<{ account_email: string }>(),
 		env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
 		env.DB.prepare(`SELECT COUNT(*) as n FROM api_logs`).first<{ n: number }>(),
 		env.DB.prepare(`SELECT COUNT(*) as n FROM sessions`).first<{ n: number }>(),
@@ -97,7 +99,15 @@ export async function handleClearDataPost(request: Request, env: Env, user?: Ses
 			const conds: string[] = [];
 			const params: string[] = [];
 			if (client)  { conds.push('client = ?');         params.push(client); }
-			if (account) { conds.push('account_email = ?');  params.push(account); }
+			if (account) {
+				if (isIpIdentity(account)) {
+					conds.push("(account_email = '' AND client_ip = ?)");
+					params.push(stripIpPrefix(account));
+				} else {
+					conds.push('account_email = ?');
+					params.push(account);
+				}
+			}
 			if (model)   { conds.push('model = ?');          params.push(model); }
 			if (conds.length === 0) return redirect(request, 'noop');
 			const res = await env.DB.prepare(`DELETE FROM api_logs WHERE ${conds.join(' AND ')}`)

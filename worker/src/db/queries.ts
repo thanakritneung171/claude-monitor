@@ -1,5 +1,6 @@
 import type { Env, ApiLog, Filters, Totals, ByModel, ByClient, ByAccount } from '../types';
-import { buildWhere } from './filters';
+import { buildWhere, IDENTITY_EXPR } from './filters';
+import { IP_PREFIX } from '../lib/account';
 
 export interface DashboardData {
 	rows: ApiLog[];
@@ -32,10 +33,10 @@ export async function fetchDashboardData(env: Env, filters: Filters): Promise<Da
 			.bind(...params).all<ByModel>(),
 		env.DB.prepare(`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
 			.bind(...params).all<ByClient>(),
-		env.DB.prepare(`SELECT account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY account_email ORDER BY cost DESC`)
+		env.DB.prepare(`SELECT ${IDENTITY_EXPR} as account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
 			.bind(...params).all<ByAccount>(),
 		env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
-		env.DB.prepare(`SELECT DISTINCT account_email FROM api_logs WHERE account_email != '' ORDER BY account_email`).all<{ account_email: string }>(),
+		env.DB.prepare(`SELECT DISTINCT ${IDENTITY_EXPR} as account_email FROM api_logs WHERE NOT (account_email = '' AND client_ip = '') ORDER BY 1`).all<{ account_email: string }>(),
 		env.DB.prepare(`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
 	]);
 
@@ -93,23 +94,26 @@ export interface AccountsListData {
 
 export async function fetchAccountsList(env: Env, fromMs: number, toMs: number): Promise<AccountsListData> {
 	const activeSince = Date.now() - 24 * 60 * 60 * 1000;
+	// "Identity" = email when present, else 'ip:<client_ip>'. Rows with NEITHER
+	// (both empty) are filtered — they can't be grouped or linked anywhere.
+	const haveIdent = `NOT (account_email = '' AND client_ip = '')`;
 	const [aggs, modelCounts, summary, active] = await Promise.all([
 		env.DB.prepare(
-			`SELECT account_email, COUNT(*) as calls, SUM(total_tokens) as tokens, SUM(cost_usd) as cost, MAX(ts) as last_seen
-			 FROM api_logs WHERE account_email != '' AND ts >= ? AND ts <= ?
-			 GROUP BY account_email ORDER BY cost DESC`
+			`SELECT ${IDENTITY_EXPR} as account_email, COUNT(*) as calls, SUM(total_tokens) as tokens, SUM(cost_usd) as cost, MAX(ts) as last_seen
+			 FROM api_logs WHERE ${haveIdent} AND ts >= ? AND ts <= ?
+			 GROUP BY 1 ORDER BY cost DESC`
 		).bind(fromMs, toMs).all<AccountAggRow>(),
 		env.DB.prepare(
-			`SELECT account_email, model, COUNT(*) as n
-			 FROM api_logs WHERE account_email != '' AND model != '' AND ts >= ? AND ts <= ?
-			 GROUP BY account_email, model`
+			`SELECT ${IDENTITY_EXPR} as account_email, model, COUNT(*) as n
+			 FROM api_logs WHERE ${haveIdent} AND model != '' AND ts >= ? AND ts <= ?
+			 GROUP BY 1, model`
 		).bind(fromMs, toMs).all<{ account_email: string; model: string; n: number }>(),
 		env.DB.prepare(
-			`SELECT SUM(cost_usd) as totalSpend, COUNT(*) as totalCalls, COUNT(DISTINCT account_email) as totalAccounts
-			 FROM api_logs WHERE account_email != '' AND ts >= ? AND ts <= ?`
+			`SELECT SUM(cost_usd) as totalSpend, COUNT(*) as totalCalls, COUNT(DISTINCT ${IDENTITY_EXPR}) as totalAccounts
+			 FROM api_logs WHERE ${haveIdent} AND ts >= ? AND ts <= ?`
 		).bind(fromMs, toMs).first<{ totalSpend: number; totalCalls: number; totalAccounts: number }>(),
 		env.DB.prepare(
-			`SELECT COUNT(DISTINCT account_email) as n FROM api_logs WHERE account_email != '' AND ts >= ?`
+			`SELECT COUNT(DISTINCT ${IDENTITY_EXPR}) as n FROM api_logs WHERE ${haveIdent} AND ts >= ?`
 		).bind(activeSince).first<{ n: number }>(),
 	]);
 
@@ -166,14 +170,22 @@ export interface AccountDetailData {
 
 export async function fetchAccountDetail(
 	env: Env,
-	email: string,
+	identity: string,
 	fromMs: number,
 	toMs: number,
 	clientFilter: string,
 	modelFilter: string,
 ): Promise<AccountDetailData> {
-	const conds = ['account_email = ?', 'ts >= ?', 'ts <= ?'];
-	const params: (string | number)[] = [email, fromMs, toMs];
+	// identity is either an email or 'ip:<client_ip>'. The IP variant restricts to
+	// rows with empty email (otherwise we'd merge unrelated callers from the same IP).
+	const isIp = identity.startsWith(IP_PREFIX);
+	const ipValue = isIp ? identity.slice(IP_PREFIX.length) : '';
+
+	const identCond  = isIp ? "(account_email = '' AND client_ip = ?)" : 'account_email = ?';
+	const identParam: string = isIp ? ipValue : identity;
+
+	const conds = [identCond, 'ts >= ?', 'ts <= ?'];
+	const params: (string | number)[] = [identParam, fromMs, toMs];
 	if (clientFilter) {
 		if (clientFilter === 'claude-code-cli, claude-desktop') {
 			conds.push("client IN ('claude-code-cli','claude-desktop')");
@@ -192,8 +204,8 @@ export async function fetchAccountDetail(
 	const trendSince = Math.max(fromMs, Date.now() - 30 * 24 * 60 * 60 * 1000);
 
 	const [exists, summary, byModel, byClient, recentRes, topPromptsRes, trendTsRes, heatmapTsRes, allClients, allModels] = await Promise.all([
-		env.DB.prepare(`SELECT MIN(ts) as firstSeen, MAX(ts) as lastSeen FROM api_logs WHERE account_email = ?`)
-			.bind(email).first<{ firstSeen: number | null; lastSeen: number | null }>(),
+		env.DB.prepare(`SELECT MIN(ts) as firstSeen, MAX(ts) as lastSeen FROM api_logs WHERE ${identCond}`)
+			.bind(identParam).first<{ firstSeen: number | null; lastSeen: number | null }>(),
 		env.DB.prepare(
 			`SELECT COUNT(*) as calls, SUM(input_tokens) as totalIn, SUM(output_tokens) as totalOut,
 			        SUM(cache_creation_tokens) as totalCW, SUM(cache_read_tokens) as totalCR,
@@ -217,18 +229,18 @@ export async function fetchAccountDetail(
 			 FROM api_logs ${where} GROUP BY prompt ORDER BY n DESC, avgCost DESC LIMIT 5`
 		).bind(...params).all<{ prompt: string; n: number; avgCost: number; modelList: string }>(),
 		env.DB.prepare(
-			`SELECT ts, cost_usd as cost FROM api_logs WHERE account_email = ? AND ts >= ?`
-		).bind(email, trendSince).all<{ ts: number; cost: number }>(),
+			`SELECT ts, cost_usd as cost FROM api_logs WHERE ${identCond} AND ts >= ?`
+		).bind(identParam, trendSince).all<{ ts: number; cost: number }>(),
 		env.DB.prepare(
-			`SELECT ts FROM api_logs WHERE account_email = ? AND ts >= ?`
-		).bind(email, heatmapSince).all<{ ts: number }>(),
+			`SELECT ts FROM api_logs WHERE ${identCond} AND ts >= ?`
+		).bind(identParam, heatmapSince).all<{ ts: number }>(),
 		env.DB.prepare(
 			`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client
-			 FROM api_logs WHERE account_email = ? AND client != '' ORDER BY client`
-		).bind(email).all<{ client: string }>(),
+			 FROM api_logs WHERE ${identCond} AND client != '' ORDER BY client`
+		).bind(identParam).all<{ client: string }>(),
 		env.DB.prepare(
-			`SELECT DISTINCT model FROM api_logs WHERE account_email = ? AND model != '' ORDER BY model`
-		).bind(email).all<{ model: string }>(),
+			`SELECT DISTINCT model FROM api_logs WHERE ${identCond} AND model != '' ORDER BY model`
+		).bind(identParam).all<{ model: string }>(),
 	]);
 
 	// Daily cost trend in Bangkok time
@@ -261,7 +273,7 @@ export async function fetchAccountDetail(
 	}
 
 	return {
-		email,
+		email: identity,
 		exists: (exists?.firstSeen ?? null) !== null,
 		firstSeen: exists?.firstSeen ?? 0,
 		lastSeen: exists?.lastSeen ?? 0,
@@ -291,15 +303,16 @@ export async function fetchAccountDetail(
 export async function insertLog(env: Env, b: Partial<ApiLog>): Promise<void> {
 	await env.DB.prepare(
 		`INSERT OR IGNORE INTO api_logs
-		   (id, ts, client, account_email, machine_name, model, prompt, prompt_chars, response_chars,
+		   (id, ts, client, account_email, client_ip, machine_name, model, prompt, prompt_chars, response_chars,
 		    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 		    total_tokens, cost_usd)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 	).bind(
 		b.id ?? crypto.randomUUID(),
 		b.ts ?? Date.now(),
 		b.client        ?? 'unknown',
 		b.account_email ?? '',
+		b.client_ip     ?? '',
 		b.machine_name  ?? '',
 		b.model         ?? '',
 		b.prompt        ?? '',
@@ -312,4 +325,47 @@ export async function insertLog(env: Env, b: Partial<ApiLog>): Promise<void> {
 		b.total_tokens          ?? 0,
 		b.cost_usd              ?? 0,
 	).run();
+}
+
+// ─── ip_identity (L3) — IP → email mapping ────────────────────────────────────
+export async function lookupIdentityByIp(env: Env, ip: string): Promise<{ email: string; name: string; uuid: string } | null> {
+	if (!ip) return null;
+	const row = await env.DB.prepare(
+		`SELECT email, name, uuid FROM ip_identity WHERE ip = ?`
+	).bind(ip).first<{ email: string; name: string; uuid: string }>();
+	return row ?? null;
+}
+
+export async function upsertIdentity(env: Env, ip: string, email: string, name = '', uuid = ''): Promise<void> {
+	if (!ip || !email) return;
+	await env.DB.prepare(
+		`INSERT INTO ip_identity (ip, email, name, uuid, updated_ms)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(ip) DO UPDATE SET
+		   email      = excluded.email,
+		   name       = CASE WHEN excluded.name != '' THEN excluded.name ELSE ip_identity.name END,
+		   uuid       = CASE WHEN excluded.uuid != '' THEN excluded.uuid ELSE ip_identity.uuid END,
+		   updated_ms = excluded.updated_ms`
+	).bind(ip, email, name, uuid, Date.now()).run();
+}
+
+export interface IdentityListRow {
+	ip: string;
+	email: string;
+	name: string;
+	uuid: string;
+	updated_ms: number;
+	calls: number;
+}
+
+export async function fetchIdentityList(env: Env): Promise<IdentityListRow[]> {
+	const res = await env.DB.prepare(
+		`SELECT i.ip, i.email, i.name, i.uuid, i.updated_ms,
+		        COUNT(l.id) AS calls
+		   FROM ip_identity i
+		   LEFT JOIN api_logs l ON l.client_ip = i.ip
+		  GROUP BY i.ip
+		  ORDER BY i.updated_ms DESC`
+	).all<IdentityListRow>();
+	return res.results ?? [];
 }

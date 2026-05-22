@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { IDENTITY_EXPR } from './filters';
 
 // ─── Timeseries / cost trends ────────────────────────────────────────────────
 export interface BucketPoint {
@@ -219,10 +220,10 @@ export async function fetchThroughput(env: Env, sinceMs: number): Promise<Throug
 		.map(([minuteStart, n]) => ({ minuteStart, n }));
 }
 
-// ─── Active sessions (distinct client+account in last N min) ─────────────────
+// ─── Active sessions (distinct client+identity in last N min) ────────────────
 export interface ActiveSession {
 	client: string;
-	account_email: string;
+	account_email: string;   // composed identity — email if present, else 'ip:<client_ip>'
 	calls: number;
 	lastSeen: number;
 	lastModel: string;
@@ -230,12 +231,19 @@ export interface ActiveSession {
 
 export async function fetchActiveSessions(env: Env, withinMs = 5 * 60 * 1000): Promise<ActiveSession[]> {
 	const since = Date.now() - withinMs;
+	// Group by (client, composed-identity). The subquery for lastModel must use the
+	// SAME identity expression so a session whose email was filled in later still
+	// resolves to the right model.
 	const res = await env.DB.prepare(
-		`SELECT client, account_email, COUNT(*) as calls, MAX(ts) as lastSeen,
-		        (SELECT model FROM api_logs a2 WHERE a2.client = a1.client AND a2.account_email = a1.account_email AND a2.ts >= ? ORDER BY ts DESC LIMIT 1) as lastModel
+		`SELECT client, ${IDENTITY_EXPR} as account_email, COUNT(*) as calls, MAX(ts) as lastSeen,
+		        (SELECT model FROM api_logs a2
+		         WHERE a2.client = a1.client
+		           AND (${IDENTITY_EXPR.replace(/account_email/g, 'a2.account_email').replace(/client_ip/g, 'a2.client_ip')}) = (${IDENTITY_EXPR.replace(/account_email/g, 'a1.account_email').replace(/client_ip/g, 'a1.client_ip')})
+		           AND a2.ts >= ?
+		         ORDER BY a2.ts DESC LIMIT 1) as lastModel
 		 FROM api_logs a1
 		 WHERE ts >= ?
-		 GROUP BY client, account_email
+		 GROUP BY client, 2
 		 ORDER BY lastSeen DESC`
 	).bind(since, since).all<{ client: string; account_email: string; calls: number; lastSeen: number; lastModel: string }>();
 	return res.results.map(r => ({

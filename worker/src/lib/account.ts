@@ -30,6 +30,28 @@ export function emailDomain(email: string): string {
 	return email.split('@')[1] || '';
 }
 
+// ─── Identity display ────────────────────────────────────────────────────────
+// `account_email` is preferred; if empty, fall back to `ip:<client_ip>`. The
+// "ip:" prefix lets views, links, and queries tell the two apart at a glance —
+// the alternative (plain IP in the email column) would silently break grouping
+// and dashboard filters that assume an email-shaped string.
+
+export const IP_PREFIX = 'ip:';
+
+export function displayAccount(email: string, clientIp: string): string {
+	if (email) return email;
+	if (clientIp) return IP_PREFIX + clientIp;
+	return '—';
+}
+
+export function isIpIdentity(id: string): boolean {
+	return id.startsWith(IP_PREFIX);
+}
+
+export function stripIpPrefix(id: string): string {
+	return id.startsWith(IP_PREFIX) ? id.slice(IP_PREFIX.length) : id;
+}
+
 export type AcctStatus = 'live' | 'idle' | 'cold';
 
 export function accountStatus(lastSeenMs: number, nowMs = Date.now()): AcctStatus {

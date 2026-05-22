@@ -16,8 +16,10 @@ function periodToRange(period: Period): { fromMs: number; toMs: number } {
 }
 
 export async function handleAccountDetail(url: URL, env: Env, user?: SessionUser): Promise<Response> {
-	const email = url.searchParams.get('email') || '';
-	if (!email) return json({ ok: false, error: 'Missing email param' }, 400);
+	// New canonical param is `identity` (an email or `ip:<ip>`).
+	// Legacy `?email=` links still resolve — older bookmarks keep working.
+	const identity = url.searchParams.get('identity') || url.searchParams.get('email') || '';
+	if (!identity) return json({ ok: false, error: 'Missing identity param' }, 400);
 
 	const periodRaw = url.searchParams.get('period') || '30d';
 	const period: Period = (['24h', '7d', '30d', '90d', 'all'] as const).includes(periodRaw as Period)
@@ -26,7 +28,7 @@ export async function handleAccountDetail(url: URL, env: Env, user?: SessionUser
 	const modelFilter  = url.searchParams.get('model')  || '';
 
 	const { fromMs, toMs } = periodToRange(period);
-	const data = await fetchAccountDetail(env, email, fromMs, toMs, clientFilter, modelFilter);
+	const data = await fetchAccountDetail(env, identity, fromMs, toMs, clientFilter, modelFilter);
 
 	const html = renderAccountDetail({ data, period, clientFilter, modelFilter, user });
 	return new Response(html, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });

@@ -9,6 +9,7 @@ import { handleDashboard } from './routes/dashboard';
 import { handleExport } from './routes/export';
 import { handleAccounts } from './routes/accounts';
 import { handleAccountDetail } from './routes/account-detail';
+import { handleIdentity } from './routes/identity';
 import { handleLoginGet, handleCallback, handleLogout, handleMe } from './routes/auth';
 import { handleAnalytics } from './routes/analytics';
 import { handleInsights } from './routes/insights';
@@ -53,6 +54,7 @@ export default {
 		if (pathname === '/'             && method === 'GET') return handleDashboard(url, env, user);
 		if (pathname === '/accounts'     && method === 'GET') return handleAccounts(url, env, user);
 		if (pathname === '/account'      && method === 'GET') return handleAccountDetail(url, env, user);
+		if (pathname === '/identity'     && method === 'GET') return handleIdentity(url, env, user);
 		if (pathname === '/analytics'    && method === 'GET') return handleAnalytics(url, env, user);
 		if (pathname === '/insights'     && method === 'GET') return handleInsights(url, env, user);
 		if (pathname === '/data-sources' && method === 'GET') return handleDataSources(url, env, user);

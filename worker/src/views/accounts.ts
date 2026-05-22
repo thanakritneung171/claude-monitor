@@ -24,7 +24,7 @@ function gridCard(a: AccountsListData['accounts'][number]): string {
 	const dark = shadeHex(color, -25);
 	const stat = accountStatus(a.lastSeen);
 	const search = `${a.email.toLowerCase()} ${emailDomain(a.email).toLowerCase()}`;
-	const url = `/account?email=${encodeURIComponent(a.email)}`;
+	const url = `/account?identity=${encodeURIComponent(a.email)}`;
 	const topModel = a.topModels[0] ?? '—';
 	return `<a class="acct-card" data-email="${esc(a.email)}" data-search="${esc(search)}" href="${url}">
 		<div class="top">
@@ -64,7 +64,7 @@ function tableRow(a: AccountsListData['accounts'][number]): string {
 	const dark = shadeHex(color, -25);
 	const stat = accountStatus(a.lastSeen);
 	const search = `${a.email.toLowerCase()} ${emailDomain(a.email).toLowerCase()}`;
-	const url = `/account?email=${encodeURIComponent(a.email)}`;
+	const url = `/account?identity=${encodeURIComponent(a.email)}`;
 	const topModel = a.topModels[0] ?? '—';
 	return `<tr data-email="${esc(a.email)}" data-search="${esc(search)}" onclick="location.href='${url}'">
 		<td>

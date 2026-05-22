@@ -22,6 +22,7 @@ export type NavKey =
 	| 'dashboard'
 	| 'analytics'
 	| 'accounts'
+	| 'identity'
 	| 'settings';
 
 export interface LayoutInput {

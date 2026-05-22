@@ -5,6 +5,7 @@ import clientJs from './dashboard.client.js';
 import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, SessionUser } from '../types';
 import { esc, num, fmtBkkParts } from '../lib/format';
 import { modelBadge, clientBadge, accountBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
+import { displayAccount } from '../lib/account';
 import { renderLayout } from './layout';
 
 const BAR_COLORS = ['#F47948', '#FF9466', '#FFB088', '#FFD1B3', '#FFE4D2'];
@@ -132,7 +133,7 @@ function renderLogRows(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap
 		return `<tr data-full="${fullPrompt}">
 			<td><span class="time">${esc(time)}<span class="date">${esc(date)}</span></span></td>
 			<td class="td-center">${clientBadge(r.client, cColorMap)}</td>
-			<td>${accountBadge(r.account_email)}</td>
+			<td>${accountBadge(r.account_email, r.client_ip)}</td>
 			<td class="td-center">${modelBadge(r.model, mColorMap)}</td>
 			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div>${r.prompt.length > 80 ? '<span class="more">เปิดดูเต็ม →</span>' : ''}</td>
 			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
@@ -162,7 +163,7 @@ function renderLogCards(rows: ApiLog[], mColorMap: Map<string, string>, cColorMa
 				${clientBadge(r.client, cColorMap)}
 			</div>
 			<div class="meta-grid">
-				<div>Account<strong style="font-size:11px;">${esc(r.account_email || '—')}</strong></div>
+				<div>Account<strong style="font-size:11px;">${esc(displayAccount(r.account_email, r.client_ip))}</strong></div>
 				<div>Total tokens<strong>${num(r.total_tokens)}</strong></div>
 				<div>Input / Output<strong>${num(r.input_tokens)} / ${num(r.output_tokens)}</strong></div>
 				<div>Cache W / R<strong>${num(r.cache_creation_tokens)} / ${num(r.cache_read_tokens)}</strong></div>
@@ -226,7 +227,7 @@ export function renderDashboard(d: RenderInput): string {
 
 	const byModelHtml   = barRowsHtml(modelItems.slice(0, TOP_N), 'model',  mColorMap);
 	const byAccountHtml = barRowsHtml(accountItems.slice(0, TOP_N), 'default', undefined,
-		(email) => `/account?email=${encodeURIComponent(email)}`);
+		(identity) => `/account?identity=${encodeURIComponent(identity)}`);
 	const byClientHtml  = barRowsHtml(clientItems.slice(0, TOP_N), 'client', cColorMap);
 
 	const breakdownAll = JSON.stringify({

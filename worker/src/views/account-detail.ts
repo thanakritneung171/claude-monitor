@@ -102,12 +102,12 @@ function barRowsHtml(items: { name: string; n: number; cost: number }[], style: 
 	}).join('');
 }
 
-function periodSeg(period: string, email: string, clientF: string, modelF: string): string {
+function periodSeg(period: string, identity: string, clientF: string, modelF: string): string {
 	const opts: { v: string; label: string }[] = [
 		{ v: '24h', label: '24h' }, { v: '7d', label: '7d' }, { v: '30d', label: '30d' }, { v: '90d', label: '90d' }, { v: 'all', label: 'All' },
 	];
 	return opts.map(o => {
-		const params = new URLSearchParams({ email });
+		const params = new URLSearchParams({ identity });
 		if (o.v !== '30d') params.set('period', o.v);
 		if (clientF) params.set('client', clientF);
 		if (modelF) params.set('model', modelF);
@@ -198,7 +198,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 	</section>
 
 	<form method="get" action="/account" class="toolbar" id="filterForm">
-		<input type="hidden" name="email" value="${esc(d.email)}">
+		<input type="hidden" name="identity" value="${esc(d.email)}">
 		<span class="label-inline">ช่วงเวลา</span>
 		<div class="seg" id="periodSeg">${periodSeg(period, d.email, clientFilter, modelFilter)}</div>
 		<span class="label-inline" style="margin-left:8px;">Client</span>
