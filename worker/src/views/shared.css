@@ -62,6 +62,21 @@ a { color: inherit; text-decoration: none; }
 .input:focus, .select:focus, .date-input:focus { outline: none; border-color: var(--peach-400); background: white; box-shadow: 0 0 0 4px rgba(255, 148, 102, 0.15); }
 .select-wrap { position: relative; }
 .select-wrap::after { content: ''; position: absolute; right: 12px; top: 50%; width: 7px; height: 7px; border-right: 2px solid var(--ink-2); border-bottom: 2px solid var(--ink-2); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+
+/* Searchable select (enhances native <select.js-search-select>) */
+.ss-native { display: none !important; }
+.ss-btn { text-align: left; display: flex; align-items: center; padding-right: 30px; }
+.ss-btn .ss-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-panel { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 100%; width: max-content; max-width: 340px; background: var(--card); border: 1px solid var(--line-2); border-radius: 11px; box-shadow: 0 12px 32px -8px rgba(180, 120, 70, 0.28); overflow: hidden; }
+.ss-panel.open { display: block; }
+.ss-search { padding: 8px; border-bottom: 1px solid var(--line); }
+.ss-search input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; font-family: inherit; font-size: 15px; color: var(--ink); background: var(--bg); outline: none; }
+.ss-search input:focus { border-color: var(--peach-400); background: white; box-shadow: 0 0 0 3px rgba(255, 148, 102, 0.15); }
+.ss-list { list-style: none; margin: 0; padding: 4px; max-height: 260px; overflow-y: auto; }
+.ss-opt { padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 15px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-opt:hover, .ss-opt.active { background: var(--peach-50); }
+.ss-opt.sel { font-weight: 700; color: var(--peach-500); background: var(--peach-50); }
+.ss-empty { padding: 12px 10px; text-align: center; color: var(--ink-3); font-size: 14px; }
 .input-wrap { position: relative; }
 .input-wrap .icon-l { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
 .input-wrap .input { padding-left: 36px; cursor: text; }
