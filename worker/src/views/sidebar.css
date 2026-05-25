@@ -40,7 +40,9 @@
 	place-items: center;
 	box-shadow: 0 4px 10px -4px rgba(0,0,0,0.15);
 	flex-shrink: 0;
+	overflow: hidden;
 }
+.sb-logo-mark { width: 28px; height: 28px; object-fit: contain; }
 .sb-logo-full {
 	display: block;
 	height: 28px;
