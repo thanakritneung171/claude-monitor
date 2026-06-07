@@ -17,16 +17,21 @@ export interface AccountsRenderInput {
 	user?: SessionUser;
 }
 
+function toDisplayDate(iso: string): string {
+	const [y, m, d] = iso.split('-');
+	return d && m && y ? `${d}/${m}/${y}` : '';
+}
+
 function modelChip(model: string): string {
 	return `<span class="chip model">${esc(modelLabel(model))}</span>`;
 }
 
-function gridCard(a: AccountsListData['accounts'][number]): string {
+function gridCard(a: AccountsListData['accounts'][number], dateSuffix: string): string {
 	const color = avatarColor(a.email);
 	const dark = shadeHex(color, -25);
 	const stat = accountStatus(a.lastSeen);
 	const search = `${a.email.toLowerCase()} ${emailDomain(a.email).toLowerCase()}`;
-	const url = `/account?identity=${encodeURIComponent(a.email)}`;
+	const url = `/account?identity=${encodeURIComponent(a.email)}${dateSuffix}`;
 	const topModel = a.topModels[0] ?? '—';
 	return `<a class="acct-card" data-email="${esc(a.email)}" data-search="${esc(search)}" href="${url}">
 		<div class="top">
@@ -61,12 +66,12 @@ function gridCard(a: AccountsListData['accounts'][number]): string {
 	</a>`;
 }
 
-function tableRow(a: AccountsListData['accounts'][number]): string {
+function tableRow(a: AccountsListData['accounts'][number], dateSuffix: string): string {
 	const color = avatarColor(a.email);
 	const dark = shadeHex(color, -25);
 	const stat = accountStatus(a.lastSeen);
 	const search = `${a.email.toLowerCase()} ${emailDomain(a.email).toLowerCase()}`;
-	const url = `/account?identity=${encodeURIComponent(a.email)}`;
+	const url = `/account?identity=${encodeURIComponent(a.email)}${dateSuffix}`;
 	const topModel = a.topModels[0] ?? '—';
 	return `<tr data-email="${esc(a.email)}" data-search="${esc(search)}" onclick="location.href='${url}'">
 		<td>
@@ -90,8 +95,11 @@ export function renderAccounts(input: AccountsRenderInput): string {
 	const { data, period } = input;
 	const periodLabelMap: Record<string, string> = { '7d': '7 วัน', '30d': '30 วัน', '90d': '90 วัน', 'all': 'ทั้งหมด', 'custom': 'กำหนดเอง' };
 
-	const gridCards = data.accounts.map(gridCard).join('');
-	const tableRows = data.accounts.map(tableRow).join('');
+	const dateSuffix = input.dateFrom && input.dateTo
+		? `&date_from=${encodeURIComponent(input.dateFrom)}&date_to=${encodeURIComponent(input.dateTo)}`
+		: '';
+	const gridCards = data.accounts.map(a => gridCard(a, dateSuffix)).join('');
+	const tableRows = data.accounts.map(a => tableRow(a, dateSuffix)).join('');
 
 	const avgCallsPerAcct = data.totalAccounts > 0 ? Math.round(data.totalCalls / data.totalAccounts) : 0;
 	const avgCost = data.totalAccounts > 0 ? data.totalSpend / data.totalAccounts : 0;
@@ -127,8 +135,10 @@ export function renderAccounts(input: AccountsRenderInput): string {
 		'{{emptyState}}': emptyState,
 		'{{accountsData}}': accountsData,
 		'{{exportUrl}}':  exportUrl,
-		'{{dateFrom}}': input.dateFrom ?? '',
-		'{{dateTo}}':   input.dateTo   ?? '',
+		'{{dateFrom}}':        input.dateFrom ?? '',
+		'{{dateTo}}':          input.dateTo   ?? '',
+		'{{dateFromDisplay}}': input.dateFrom ? toDisplayDate(input.dateFrom) : '',
+		'{{dateToDisplay}}':   input.dateTo   ? toDisplayDate(input.dateTo)   : '',
 	};
 
 	let content = html;
