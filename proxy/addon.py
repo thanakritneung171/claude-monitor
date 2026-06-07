@@ -11,7 +11,6 @@ Usage:
 """
 
 import json
-import os
 import re
 import socket
 import threading
@@ -34,9 +33,10 @@ except ImportError:
 # When enabled, only log calls whose detected account_email contains
 # EMAIL_FILTER_SUBSTRING (case-insensitive). Calls with no detected email
 # (e.g. raw API key users) are dropped while the filter is on.
-# Toggle: set EMAIL_FILTER_ENABLED = False to log everything.
-EMAIL_FILTER_ENABLED   = False
-EMAIL_FILTER_SUBSTRING = "@softdebut"
+# Configured in config.py (which itself reads env vars, for Docker). getattr
+# keeps backward-compat if an older config.py lacks these fields.
+EMAIL_FILTER_ENABLED   = getattr(config, "EMAIL_FILTER_ENABLED", True)
+EMAIL_FILTER_SUBSTRING = getattr(config, "EMAIL_FILTER_SUBSTRING", "@softdebut")
 
 def _should_log(email: str) -> bool:
     if not EMAIL_FILTER_ENABLED:
@@ -433,6 +433,43 @@ class ToolSchemaFixer:
 class ClaudeAPIMonitor:
     """Intercepts api.anthropic.com/v1/messages (API key users)."""
 
+    def request(self, flow: http.HTTPFlow):
+        """Pull email from Bearer JWT before forwarding.
+
+        Claude Code (CLI / VSCode) with subscription login sends the OAuth
+        access token (a JWT carrying an `email` claim) on every /v1/messages
+        request. Decoding it here captures identity even when the user never
+        opens claude.ai / Desktop — covers the case where the bridge WS path
+        is skipped and traffic goes straight to api.anthropic.com.
+        """
+        if flow.request.host != "api.anthropic.com":
+            return
+        path = flow.request.path.split("?", 1)[0]
+        if path != "/v1/messages":
+            return
+
+        auth = flow.request.headers.get("Authorization", "") or \
+               flow.request.headers.get("authorization", "")
+        if not auth.lower().startswith("bearer "):
+            return
+        token = auth[7:]
+        # Raw API key (`sk-ant-…`) is not a JWT — skip.
+        if token.startswith("sk-"):
+            return
+
+        payload = _decode_jwt_payload(token)
+        email = payload.get("email") or payload.get("email_address") or ""
+        if not _looks_like_email(email):
+            return
+
+        _set_account(
+            _client_ip(flow),
+            email,
+            name=payload.get("name") or payload.get("full_name") or "",
+            uuid_=str(payload.get("sub") or payload.get("user_id") or ""),
+            source="api jwt",
+        )
+
     def response(self, flow: http.HTTPFlow):
         if flow.request.host   != "api.anthropic.com": return
         # path includes query string, strip it before matching.
@@ -501,12 +538,14 @@ class ClaudeAPIMonitor:
             print(f"[claude-api] SKIP (filter) | {client} | {model} | email={email or '(none)'}")
             return
 
+        ip = _client_ip(flow)
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                client,
             "account_email":         email,
-            "machine_name":          HOSTNAME,
+            "client_ip":             ip,
+            "machine_name":          ip,
             "model":                 model,
             "prompt":                prompt,
             "prompt_chars":          len(prompt),
@@ -593,12 +632,14 @@ class ClaudeDesktopMonitor:
             print(f"[claude-desktop] SKIP (filter) | {model} | email={email or '(none)'}")
             return
 
+        ip = _client_ip(flow)
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                "claude-desktop",
             "account_email":         email,
-            "machine_name":          HOSTNAME,
+            "client_ip":             ip,
+            "machine_name":          ip,
             "model":                 model,
             "prompt":                prompt,
             "prompt_chars":          len(prompt),
@@ -974,12 +1015,14 @@ class ClaudeBridgeMonitor:
             print(f"[claude-bridge] SKIP (filter) | {sess['client']} | {model} | email={email or '(none)'}")
             return
 
+        ip = sess["src_ip"]
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                sess["client"],
             "account_email":         email,
-            "machine_name":          HOSTNAME,
+            "client_ip":             ip,
+            "machine_name":          ip,
             "model":                 model,
             "prompt":                prompt,
             "prompt_chars":          len(prompt),
