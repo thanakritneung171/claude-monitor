@@ -16,20 +16,34 @@ function periodToRange(period: Period): { fromMs: number; toMs: number } {
 }
 
 export async function handleAccountDetail(url: URL, env: Env, user?: SessionUser): Promise<Response> {
-	// New canonical param is `identity` (an email or `ip:<ip>`).
-	// Legacy `?email=` links still resolve — older bookmarks keep working.
 	const identity = url.searchParams.get('identity') || url.searchParams.get('email') || '';
 	if (!identity) return json({ ok: false, error: 'Missing identity param' }, 400);
 
-	const periodRaw = url.searchParams.get('period') || '30d';
-	const period: Period = (['24h', '7d', '30d', '90d', 'all'] as const).includes(periodRaw as Period)
-		? (periodRaw as Period) : '30d';
+	const dateFrom = url.searchParams.get('date_from') ?? '';
+	const dateTo   = url.searchParams.get('date_to')   ?? '';
 	const clientFilter = url.searchParams.get('client') || '';
 	const modelFilter  = url.searchParams.get('model')  || '';
 
-	const { fromMs, toMs } = periodToRange(period);
-	const data = await fetchAccountDetail(env, identity, fromMs, toMs, clientFilter, modelFilter);
+	let period: Period;
+	let fromMs: number;
+	let toMs: number;
 
-	const html = renderAccountDetail({ data, period, clientFilter, modelFilter, user });
+	if (dateFrom && dateTo) {
+		period = 'custom';
+		fromMs = new Date(dateFrom + 'T00:00:00+07:00').getTime();
+		toMs   = new Date(dateTo   + 'T23:59:59+07:00').getTime();
+	} else {
+		const periodRaw = url.searchParams.get('period') || '30d';
+		period = (['24h', '7d', '30d', '90d', 'all'] as const).includes(periodRaw as Exclude<Period, 'custom'>)
+			? (periodRaw as Exclude<Period, 'custom'>) : '30d';
+		({ fromMs, toMs } = periodToRange(period));
+	}
+
+	const data = await fetchAccountDetail(env, identity, fromMs, toMs, clientFilter, modelFilter);
+	const html = renderAccountDetail({
+		data, period, clientFilter, modelFilter, user,
+		dateFrom: dateFrom || undefined,
+		dateTo:   dateTo   || undefined,
+	});
 	return new Response(html, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
 }

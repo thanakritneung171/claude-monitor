@@ -22,10 +22,15 @@ function periodToDateFrom(period: string): string {
 	return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 }
 
-function dashboardAllUrl(email: string, period: string): string {
+function toDisplayDate(iso: string): string {
+	const [y, m, d] = iso.split('-');
+	return d && m && y ? `${d}/${m}/${y}` : iso;
+}
+
+function dashboardAllUrl(email: string, period: string, dateFrom?: string, dateTo?: string): string {
 	const params = new URLSearchParams({
-		date_from: periodToDateFrom(period),
-		date_to: todayBkk(),
+		date_from: dateFrom || periodToDateFrom(period),
+		date_to:   dateTo   || todayBkk(),
 		account: email,
 		per_page: 'all',
 		page: '1',
@@ -35,9 +40,11 @@ function dashboardAllUrl(email: string, period: string): string {
 
 export interface AccountDetailRenderInput {
 	data: AccountDetailData;
-	period: '24h' | '7d' | '30d' | '90d' | 'all';
+	period: '24h' | '7d' | '30d' | '90d' | 'all' | 'custom';
 	clientFilter: string;
 	modelFilter: string;
+	dateFrom?: string; // YYYY-MM-DD, when set with dateTo overrides period
+	dateTo?: string;
 	user?: SessionUser;
 }
 
@@ -159,7 +166,16 @@ function renderEmpty(email: string): string {
 	return `<div class="empty-state">ไม่พบ account <strong>${esc(email)}</strong> ในระบบ — ลองกลับไปหน้า <a href="/accounts" style="color:var(--peach-500);font-weight:600;">Accounts</a></div>`;
 }
 
-function renderBody(d: AccountDetailData, period: string, clientFilter: string, modelFilter: string): string {
+function buildExportUrl(email: string, period: string, clientFilter: string, modelFilter: string, dateFrom?: string, dateTo?: string): string {
+	const from = dateFrom || periodToDateFrom(period);
+	const to   = dateTo   || todayBkk();
+	const p = new URLSearchParams({ account: email, date_from: from, date_to: to });
+	if (clientFilter) p.set('client', clientFilter);
+	if (modelFilter)  p.set('model',  modelFilter);
+	return '/export?' + p.toString();
+}
+
+function renderBody(d: AccountDetailData, period: string, clientFilter: string, modelFilter: string, dateFrom?: string, dateTo?: string): string {
 	if (!d.exists) return renderEmpty(d.email);
 
 	const color = avatarColor(d.email);
@@ -193,7 +209,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 			</div>
 		</div>
 		<div class="actions">
-			<a href="${dashboardAllUrl(d.email, period)}" class="btn primary">ดู Logs ทั้งหมด</a>
+			<a href="${dashboardAllUrl(d.email, period, dateFrom, dateTo)}" class="btn primary">ดู Logs ทั้งหมด</a>
 		</div>
 	</section>
 
@@ -201,6 +217,12 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 		<input type="hidden" name="identity" value="${esc(d.email)}">
 		<span class="label-inline">ช่วงเวลา</span>
 		<div class="seg" id="periodSeg">${periodSeg(period, d.email, clientFilter, modelFilter)}</div>
+		${dateFrom && dateTo ? `
+		<a class="date-custom-badge" href="/account?identity=${encodeURIComponent(d.email)}${clientFilter ? `&client=${encodeURIComponent(clientFilter)}` : ''}${modelFilter ? `&model=${encodeURIComponent(modelFilter)}` : ''}" title="ล้างช่วงวันที่">
+			📅 ${esc(toDisplayDate(dateFrom))} – ${esc(toDisplayDate(dateTo))} ✕
+		</a>
+		<input type="hidden" name="date_from" value="${esc(dateFrom)}">
+		<input type="hidden" name="date_to" value="${esc(dateTo)}">` : ''}
 		<span class="label-inline" style="margin-left:8px;">Client</span>
 		<div class="select-wrap" style="width:200px;">
 			<select class="select" name="client" onchange="this.form.submit()">
@@ -215,7 +237,11 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 				${modelOpts}
 			</select>
 		</div>
-		<input type="hidden" name="period" value="${esc(period)}">
+		${!dateFrom || !dateTo ? `<input type="hidden" name="period" value="${esc(period)}">` : ''}
+		<a href="${buildExportUrl(d.email, period, clientFilter, modelFilter, dateFrom, dateTo)}" class="btn" style="margin-left:auto;" download>
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+			Export
+		</a>
 	</form>
 
 	<section class="stats">
@@ -305,7 +331,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 	<div class="prompts-table">
 		<div class="table-head">
 			<h3>Recent activity</h3>
-			<a href="${dashboardAllUrl(d.email, period)}" class="btn">ดูทั้งหมด</a>
+			<a href="${dashboardAllUrl(d.email, period, dateFrom, dateTo)}" class="btn">ดูทั้งหมด</a>
 		</div>
 		<div class="scroll">
 			<table>
@@ -322,8 +348,8 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 }
 
 export function renderAccountDetail(input: AccountDetailRenderInput): string {
-	const { data, period, clientFilter, modelFilter } = input;
-	const bodyHtml = renderBody(data, period, clientFilter, modelFilter);
+	const { data, period, clientFilter, modelFilter, dateFrom, dateTo } = input;
+	const bodyHtml = renderBody(data, period, clientFilter, modelFilter, dateFrom, dateTo);
 
 	const tokenMix = JSON.stringify([
 		{ name: 'Cache Read', value: data.totalCR, color: '#FFD1B3' },

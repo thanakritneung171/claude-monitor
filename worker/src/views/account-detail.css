@@ -24,6 +24,9 @@
 .toolbar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .toolbar .label-inline { font-size: 16px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
 
+.date-custom-badge { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px solid var(--peach-300); border-radius: 10px; background: var(--peach-50); color: var(--peach-500); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: all 0.12s; }
+.date-custom-badge:hover { background: var(--peach-100); border-color: var(--peach-400); }
+
 /* Charts row */
 .charts { margin-top: 14px; display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 12px; }
 .spark-wrap { height: 200px; width: 100%; }
