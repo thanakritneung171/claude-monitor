@@ -1,0 +1,17 @@
+flowchart TD
+    R["📋 Row จาก api_logs"] --> Q1{account_email<br/>not empty?}
+    Q1 -->|"Yes"| D1["📧 alice@softdebut.com<br/>orange badge"]
+    Q1 -->|"No"| Q2{client_ip<br/>not empty?}
+    Q2 -->|"Yes"| D2["💻 ip:10.10.84.42<br/>gray badge"]
+    Q2 -->|"No"| D3["— (unknown)"]
+
+    D1 -->|"click"| L1["🔗 /account?identity=<br/>alice@softdebut.com"]
+    D2 -->|"click"| L2["🔗 /account?identity=<br/>ip:10.10.84.42"]
+    D3 -.->|"no link"| X[" "]
+
+    L1 --> P1["Account detail page<br/>filter: account_email = ?"]
+    L2 --> P2["Account detail page<br/>filter: client_ip = ? AND<br/>account_email = ''"]
+
+    style D1 fill:#fde8d8,stroke:#f47948
+    style D2 fill:#e8e8e8,stroke:#6b6b6b
+    style D3 fill:#fff

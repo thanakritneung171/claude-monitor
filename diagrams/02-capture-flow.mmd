@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant U as 👤 User
+    participant V as 💻 VSCode / CLI
+    participant P as 🖥️ Proxy
+    participant W as ☁️ Worker
+    participant D as 🗄️ D1
+
+    U->>V: Login subscription
+    V->>P: WS upgrade with Bearer JWT
+    P->>P: _decode_jwt_payload(token)
+    P->>P: _set_account(ip, email)
+    Note over P: L1 + L2 updated
+
+    U->>V: Send chat
+    V->>P: POST /v1/messages
+    P->>P: build log (email from L1)
+    P->>W: POST /log + client_ip + email
+    W->>D: INSERT api_logs (L4)
+    W->>D: UPSERT ip_identity (L3 sync)
+    W-->>P: 200 OK

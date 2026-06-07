@@ -1,0 +1,20 @@
+flowchart TD
+    A["📥 POST /log arrives<br/>{email: '', client_ip: '10.10.84.42'}"] --> B{email empty?}
+    B -->|"No"| F["✓ use email as-is"]
+    B -->|"Yes"| C["🔍 SELECT ip_identity<br/>WHERE ip = client_ip"]
+    C --> D{found in L3?}
+    D -->|"Yes"| E["✓ fill email from L3"]
+    D -->|"No"| G["⚠️ leave empty<br/>(IP only for audit)"]
+    E --> F
+    G --> F
+    F --> H["📝 INSERT api_logs<br/>(L4 — historical snapshot)"]
+    H --> I{email present?}
+    I -->|"Yes"| J["💾 UPSERT ip_identity<br/>(L3 sync — current owner)"]
+    I -->|"No"| K["✅ done"]
+    J --> K
+
+    style A fill:#fff
+    style E fill:#d8f5d8
+    style G fill:#fde8d8
+    style H fill:#d8e8fd
+    style J fill:#d8e8fd

@@ -1,0 +1,33 @@
+flowchart TB
+    subgraph SRC["📡 Capture Sources"]
+        direction LR
+        S1["HTTP sniffer<br/>(claude.ai)"]
+        S2["JWT decode<br/>(Bearer token)"]
+        S3["Bridge connect<br/>(WS frame)"]
+    end
+
+    subgraph PROXY["🖥️ Proxy Server (mitmdump)"]
+        L1["<b>L1: _ACCOUNT_BY_IP</b><br/>in-memory dict<br/>hot read path"]
+        L2["<b>L2: account_slots.json</b><br/>local file<br/>survives restart"]
+        L1 <-->|write-through| L2
+    end
+
+    subgraph WORKER["☁️ Cloudflare Worker + D1"]
+        L3["<b>L3: ip_identity</b><br/>IP → email mapping<br/>source of truth"]
+        L4["<b>L4: api_logs.client_ip</b><br/>audit on every row"]
+    end
+
+    DASH["📊 Dashboard<br/>email or ip:xx fallback"]
+
+    SRC -->|"_set_account()"| L1
+    L1 -->|"POST /log<br/>{email, client_ip}"| WORKER
+    WORKER -->|"lookup if email empty"| L3
+    WORKER -->|"INSERT"| L4
+    WORKER -->|"UPSERT (sync)"| L3
+    L4 --> DASH
+    L3 -.->|"tooltip:<br/>current owner"| DASH
+
+    style L1 fill:#fde8d8,stroke:#f47948
+    style L2 fill:#fde8d8,stroke:#f47948
+    style L3 fill:#d8e8fd,stroke:#2c6ec9
+    style L4 fill:#d8e8fd,stroke:#2c6ec9

@@ -1,0 +1,17 @@
+gantt
+    title Deploy & rollout
+    dateFormat X
+    axisFormat %s
+
+    section 🖥️ Proxy
+    Step 1 client_ip + machine_name : 0, 1
+    Step 7 HTTP JWT decode          : 4, 5
+
+    section 🗄️ D1
+    Step 2 Migration (ALTER+CREATE) : 1, 2
+
+    section ☁️ Worker
+    Step 3-5 types + handleLog logic : 2, 3
+    Step 6.1-6.2 Row display         : 3, 4
+    Step 6.3-6.4 Aggregate + URL     : 4, 5
+    Step 6.5 Tooltip (รอ)            : 5, 6
