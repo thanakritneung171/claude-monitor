@@ -172,3 +172,6 @@ __pycache__/
 
 # local logs
 log/
+
+# mitmproxy local CA (do not commit)
+proxy/mitmproxy-ca-cert.pem
