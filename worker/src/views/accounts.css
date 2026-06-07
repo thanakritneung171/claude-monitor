@@ -11,6 +11,13 @@
 .toolbar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .toolbar .input-wrap { flex: 1 1 280px; }
 
+.date-range { display: flex; align-items: center; gap: 6px; }
+.date-input { height: 36px; border: 1px solid var(--line-2); border-radius: 10px; padding: 0 10px; font-size: 13px; color: var(--ink); background: var(--bg); font-family: inherit; outline: none; }
+.date-input:focus { border-color: var(--peach-400); }
+.date-sep { color: var(--ink-3); font-size: 14px; }
+.date-apply-btn { height: 36px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.12s; white-space: nowrap; }
+.date-apply-btn:hover { border-color: var(--peach-400); color: var(--peach-500); background: var(--card); }
+
 .view-toggle { display: inline-flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 9px; padding: 3px; gap: 3px; height: 36px; }
 .view-toggle button { width: 36px; height: 28px; border: 0; background: transparent; border-radius: 7px; cursor: pointer; display: grid; place-items: center; color: var(--ink-2); transition: all 0.15s; }
 .view-toggle button:hover { color: var(--ink); }

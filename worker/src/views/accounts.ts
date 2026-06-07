@@ -11,7 +11,9 @@ import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTi
 
 export interface AccountsRenderInput {
 	data: AccountsListData;
-	period: '7d' | '30d' | '90d' | 'all';
+	period: '7d' | '30d' | '90d' | 'all' | 'custom';
+	dateFrom?: string; // YYYY-MM-DD
+	dateTo?: string;   // YYYY-MM-DD
 	user?: SessionUser;
 }
 
@@ -86,7 +88,7 @@ function tableRow(a: AccountsListData['accounts'][number]): string {
 
 export function renderAccounts(input: AccountsRenderInput): string {
 	const { data, period } = input;
-	const periodLabelMap: Record<string, string> = { '7d': '7 วัน', '30d': '30 วัน', '90d': '90 วัน', 'all': 'ทั้งหมด' };
+	const periodLabelMap: Record<string, string> = { '7d': '7 วัน', '30d': '30 วัน', '90d': '90 วัน', 'all': 'ทั้งหมด', 'custom': 'กำหนดเอง' };
 
 	const gridCards = data.accounts.map(gridCard).join('');
 	const tableRows = data.accounts.map(tableRow).join('');
@@ -102,8 +104,10 @@ export function renderAccounts(input: AccountsRenderInput): string {
 		email: a.email, calls: a.calls, cost: a.cost, lastSeen: a.lastSeen,
 	})));
 
-	const exportUrl = '/export?date_from=' + new Date(Date.now() - daysFromPeriod(period) * 86400000).toISOString().slice(0, 10)
-		+ '&date_to=' + new Date().toISOString().slice(0, 10);
+	const exportUrl = period === 'custom' && input.dateFrom && input.dateTo
+		? `/export?date_from=${input.dateFrom}&date_to=${input.dateTo}`
+		: '/export?date_from=' + new Date(Date.now() - daysFromPeriod(period) * 86400000).toISOString().slice(0, 10)
+			+ '&date_to=' + new Date().toISOString().slice(0, 10);
 
 	const replacements: Record<string, string> = {
 		'{{clientJs}}':  clientJs,
@@ -123,6 +127,8 @@ export function renderAccounts(input: AccountsRenderInput): string {
 		'{{emptyState}}': emptyState,
 		'{{accountsData}}': accountsData,
 		'{{exportUrl}}':  exportUrl,
+		'{{dateFrom}}': input.dateFrom ?? '',
+		'{{dateTo}}':   input.dateTo   ?? '',
 	};
 
 	let content = html;
