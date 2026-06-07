@@ -14,6 +14,7 @@
 		"db:migrate-logto": "wrangler d1 execute prompt-logger --remote --file=migrations/0003_logto.sql"
 	},
 	"dependencies": {
+		"fflate": "^0.8.3",
 		"jose": "^5.10.0"
 	},
 	"devDependencies": {
