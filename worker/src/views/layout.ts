@@ -38,7 +38,7 @@ export interface LayoutInput {
 }
 
 // const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'insights', 'data_sources', 'monitoring', 'accounts', 'users', 'reports', 'settings'];
-const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'accounts', 'settings'];
+const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'accounts', 'identity', 'settings'];
 
 export function renderSidebar(activeNav: NavKey, user?: SessionUser): string {
 	let out = sidebarHtml;
