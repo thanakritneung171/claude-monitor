@@ -7,7 +7,7 @@ import { renderLayout } from './layout';
 
 export interface AnalyticsRenderInput {
 	user?: SessionUser;
-	period: '7d' | '30d' | '90d';
+	period: '24h' | '7d' | '30d' | '90d';
 	fromMs: number;
 	toMs: number;
 	timeseries: BucketPoint[];
@@ -47,7 +47,8 @@ function lineChart(points: BucketPoint[], keyOf: (p: BucketPoint) => number, col
 		for (let i = 0; i < targetCount; i++) {
 			const idx = Math.round((i / (targetCount - 1)) * (points.length - 1));
 			const x = pad.l + idx * xStep;
-			out.push(`<text x="${x}" y="${h - 6}" font-size="9" fill="var(--ink-3)" text-anchor="middle">${esc(points[idx].bucket.slice(5))}</text>`);
+			const bucketLabel = (b: string) => b.includes('T') ? b.slice(11) + ':00' : b.slice(5);
+			out.push(`<text x="${x}" y="${h - 6}" font-size="9" fill="var(--ink-3)" text-anchor="middle">${esc(bucketLabel(points[idx].bucket))}</text>`);
 		}
 		return out.join('');
 	})();
@@ -105,7 +106,8 @@ function stackedArea(points: BucketPoint[], height = 220): string {
 		for (let i = 0; i < targetCount; i++) {
 			const idx = Math.round((i / (targetCount - 1)) * (points.length - 1));
 			const x = pad.l + idx * xStep;
-			out.push(`<text x="${x}" y="${h - 6}" font-size="9" fill="var(--ink-3)" text-anchor="middle">${esc(points[idx].bucket.slice(5))}</text>`);
+			const bucketLabel = (b: string) => b.includes('T') ? b.slice(11) + ':00' : b.slice(5);
+			out.push(`<text x="${x}" y="${h - 6}" font-size="9" fill="var(--ink-3)" text-anchor="middle">${esc(bucketLabel(points[idx].bucket))}</text>`);
 		}
 		return out.join('');
 	})();
@@ -179,7 +181,7 @@ function sparkline(points: BucketPoint[], color: string): string {
 }
 
 export function renderAnalytics(d: AnalyticsRenderInput): string {
-	const periodLink = (p: '7d' | '30d' | '90d') => `<a href="?period=${p}"${d.period === p ? ' class="on"' : ''}>${p}</a>`;
+	const periodLink = (p: '24h' | '7d' | '30d' | '90d') => `<a href="?period=${p}"${d.period === p ? ' class="on"' : ''}>${p}</a>`;
 
 	const allModelLabels = d.perModelSeries.map(m => modelLabel(m.model));
 	const mColorMap = buildColorMap(allModelLabels, MODEL_PASTEL);
@@ -204,7 +206,7 @@ export function renderAnalytics(d: AnalyticsRenderInput): string {
 	const toolbar = `
 		<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;">
 			<span style="font-size:12px;color:var(--ink-2);font-weight:600;">Period</span>
-			<div class="seg">${periodLink('7d')}${periodLink('30d')}${periodLink('90d')}</div>
+			<div class="seg">${periodLink('24h')}${periodLink('7d')}${periodLink('30d')}${periodLink('90d')}</div>
 			<button class="an-export-btn" onclick="window.print()">Export PDF</button>
 		</div>`;
 

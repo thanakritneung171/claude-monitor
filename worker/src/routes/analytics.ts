@@ -2,11 +2,12 @@ import type { Env, SessionUser } from '../types';
 import { fetchCostTimeseries, fetchHourOfDayHeatmap, type BucketPoint } from '../db/queries-extra';
 import { renderAnalytics } from '../views/analytics';
 
-type Period = '7d' | '30d' | '90d';
+type Period = '24h' | '7d' | '30d' | '90d';
 
 function rangeFor(p: Period): { fromMs: number; toMs: number; groupBy: 'day' | 'hour' } {
 	const now = Date.now();
 	const day = 86400000;
+	if (p === '24h') return { fromMs: now - day,      toMs: now, groupBy: 'hour' };
 	if (p === '7d')  return { fromMs: now - 7 * day,  toMs: now, groupBy: 'day' };
 	if (p === '90d') return { fromMs: now - 90 * day, toMs: now, groupBy: 'day' };
 	return { fromMs: now - 30 * day, toMs: now, groupBy: 'day' };
@@ -14,7 +15,7 @@ function rangeFor(p: Period): { fromMs: number; toMs: number; groupBy: 'day' | '
 
 export async function handleAnalytics(url: URL, env: Env, user?: SessionUser): Promise<Response> {
 	const periodRaw = url.searchParams.get('period') ?? '30d';
-	const period: Period = (['7d', '30d', '90d'] as const).includes(periodRaw as Period) ? (periodRaw as Period) : '30d';
+	const period: Period = (['24h', '7d', '30d', '90d'] as const).includes(periodRaw as Period) ? (periodRaw as Period) : '30d';
 	const { fromMs, toMs, groupBy } = rangeFor(period);
 
 	const [timeseries, heatmap, modelRows] = await Promise.all([
@@ -35,8 +36,11 @@ export async function handleAnalytics(url: URL, env: Env, user?: SessionUser): P
 		const map = new Map<string, BucketPoint>();
 		for (const r of rows.results) {
 			const d = new Date(r.ts + 7 * 60 * 60 * 1000);
-			const key = d.toISOString().slice(0, 10);
-			const e = map.get(key) ?? { bucket: key, bucketTs: new Date(key + 'T00:00:00+07:00').getTime(), cost: 0, calls: 0, inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0 };
+			const key = groupBy === 'hour' ? d.toISOString().slice(0, 13) : d.toISOString().slice(0, 10);
+			const bucketTs = groupBy === 'hour'
+				? new Date(key + ':00:00+07:00').getTime()
+				: new Date(key + 'T00:00:00+07:00').getTime();
+			const e = map.get(key) ?? { bucket: key, bucketTs, cost: 0, calls: 0, inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0 };
 			e.cost += r.cost ?? 0;
 			e.calls += 1;
 			e.inputTokens += r.iin ?? 0;
