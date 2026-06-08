@@ -61,33 +61,39 @@
 	.an-row { grid-template-columns: 1fr; }
 }
 
-@media print {
-	/* hide chrome */
-	nav, .site-header, .page-header-actions, .an-export-btn, .seg { display: none !important; }
+@page { size: A4 landscape; margin: 1cm 1.5cm; }
 
-	/* reset backgrounds to white */
-	body, .layout, .main-content, .card, .ss-card {
+@media print {
+	/* hide sidebar + topbar + export controls */
+	.sidebar, .topbar-inner, .an-export-btn, .seg { display: none !important; }
+
+	/* collapse shell grid — sidebar is gone so content takes full width */
+	.shell { display: block !important; }
+	.main  { width: 100% !important; }
+	.page  { padding: 12px 0 0 !important; }
+
+	/* white background throughout */
+	html, body, .shell, .main, .page, .card, .ss-card {
 		background: #fff !important;
-		color: #000 !important;
+		color: #111 !important;
 		box-shadow: none !important;
 	}
 
-	/* full width layout */
-	.layout { grid-template-columns: 1fr !important; }
-	.main-content { padding: 0 !important; }
+	/* stat strip — keep 4 columns */
+	.summary-strip { grid-template-columns: repeat(4, 1fr) !important; margin-top: 8px; }
+	.ss-card { border: 1px solid #ddd !important; padding: 10px 14px !important; }
+	.ss-card .value { font-size: 22px !important; }
+	.ss-card .label { font-size: 11px !important; }
 
-	/* stat cards */
-	.summary-strip { grid-template-columns: repeat(4, 1fr) !important; }
-	.ss-card { border: 1px solid #ddd !important; }
-	.ss-card .value { font-size: 24px !important; }
+	/* charts — keep side-by-side layout */
+	.an-row { grid-template-columns: 2fr 1fr !important; break-inside: avoid; }
+	.card   { break-inside: avoid; border: 1px solid #ddd !important; margin-bottom: 10px; }
 
-	/* charts */
-	.an-row { grid-template-columns: 2fr 1fr !important; page-break-inside: avoid; }
-	.card { page-break-inside: avoid; border: 1px solid #ddd !important; margin-bottom: 12px; }
-
-	/* heatmap */
-	.heatmap-table .hm-cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+	/* heatmap preserve colors */
+	.heatmap-table .hm-cell,
+	.heatmap-foot .scale span { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
 	/* sparklines */
 	.sparkline-row svg path { stroke-opacity: 1 !important; }
+	.swatch { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
