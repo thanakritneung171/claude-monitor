@@ -202,9 +202,10 @@ export function renderAnalytics(d: AnalyticsRenderInput): string {
 		</section>`;
 
 	const toolbar = `
-		<div style="display:flex;gap:10px;align-items:center;margin-top:14px;">
+		<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;">
 			<span style="font-size:12px;color:var(--ink-2);font-weight:600;">Period</span>
 			<div class="seg">${periodLink('7d')}${periodLink('30d')}${periodLink('90d')}</div>
+			<button class="an-export-btn" onclick="window.print()">Export PDF</button>
 		</div>`;
 
 	const content = `

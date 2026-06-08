@@ -38,7 +38,56 @@
 .sparkline-row .spark svg { width: 100%; height: 100%; }
 .sparkline-row .total { font-family: "JetBrains Mono", monospace; font-size: 18px; font-weight: 700; color: var(--ink); text-align: right; }
 
+.an-export-btn {
+	margin-left: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 14px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: var(--card);
+	color: var(--ink-2);
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s;
+}
+.an-export-btn:hover { background: var(--peach-100); color: var(--ink); }
+.an-export-btn::before { content: '↓'; font-size: 13px; }
+
 @media (max-width: 1100px) {
 	.summary-strip { grid-template-columns: repeat(2, 1fr); }
 	.an-row { grid-template-columns: 1fr; }
+}
+
+@media print {
+	/* hide chrome */
+	nav, .site-header, .page-header-actions, .an-export-btn, .seg { display: none !important; }
+
+	/* reset backgrounds to white */
+	body, .layout, .main-content, .card, .ss-card {
+		background: #fff !important;
+		color: #000 !important;
+		box-shadow: none !important;
+	}
+
+	/* full width layout */
+	.layout { grid-template-columns: 1fr !important; }
+	.main-content { padding: 0 !important; }
+
+	/* stat cards */
+	.summary-strip { grid-template-columns: repeat(4, 1fr) !important; }
+	.ss-card { border: 1px solid #ddd !important; }
+	.ss-card .value { font-size: 24px !important; }
+
+	/* charts */
+	.an-row { grid-template-columns: 2fr 1fr !important; page-break-inside: avoid; }
+	.card { page-break-inside: avoid; border: 1px solid #ddd !important; margin-bottom: 12px; }
+
+	/* heatmap */
+	.heatmap-table .hm-cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+	/* sparklines */
+	.sparkline-row svg path { stroke-opacity: 1 !important; }
 }
