@@ -21,7 +21,46 @@
 	</div>
 </section>
 
-<section class="toolbar">
+<form class="filters" id="filterForm" method="GET" action="/accounts">
+	<div class="filter-row">
+		<div class="field period">
+			<label>ช่วงเวลา</label>
+			<div class="seg" id="periodSeg">
+				<button type="button" data-period="7d"{{period7dOn}}>7d</button>
+				<button type="button" data-period="30d"{{period30dOn}}>30d</button>
+				<button type="button" data-period="90d"{{period90dOn}}>90d</button>
+				<button type="button" data-period="all"{{periodAllOn}}>All</button>
+			</div>
+			<input type="hidden" name="period" id="periodInput" value="{{periodValue}}">
+		</div>
+		<div class="field dates">
+			<label>Date From</label>
+			<div class="date-wrap">
+				<input type="text" class="date-input" id="dateFrom-txt" value="{{dateFromDisplay}}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+				<input type="date" class="date-real" name="date_from" id="dateFromReal" value="{{dateFrom}}">
+			</div>
+		</div>
+		<div class="field dates">
+			<label>Date To</label>
+			<div class="date-wrap">
+				<input type="text" class="date-input" id="dateTo-txt" value="{{dateToDisplay}}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+				<input type="date" class="date-real" name="date_to" id="dateToReal" value="{{dateTo}}">
+			</div>
+		</div>
+		<div class="field-actions">
+			<a href="{{exportUrl}}" class="btn" download>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+				Export Excel
+			</a>
+			<button type="submit" class="btn primary">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+				Apply
+			</button>
+		</div>
+	</div>
+</form>
+
+<div class="toolbar">
 	<div class="input-wrap">
 		<span class="icon-l">
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -36,24 +75,6 @@
 			<option value="email">เรียงตาม: Email</option>
 		</select>
 	</div>
-	<div class="seg" id="periodSeg">
-		<a href="?period=7d"{{period7dOn}}>7d</a>
-		<a href="?period=30d"{{period30dOn}}>30d</a>
-		<a href="?period=90d"{{period90dOn}}>90d</a>
-		<a href="?period=all"{{periodAllOn}}>All</a>
-	</div>
-	<form class="date-range" id="dateRange" method="GET" action="/accounts">
-		<div class="date-wrap">
-			<input type="text" class="date-input" id="dateFrom-txt" value="{{dateFromDisplay}}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
-			<input type="date" class="date-real" name="date_from" id="dateFromReal" value="{{dateFrom}}">
-		</div>
-		<span class="date-sep">–</span>
-		<div class="date-wrap">
-			<input type="text" class="date-input" id="dateTo-txt" value="{{dateToDisplay}}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
-			<input type="date" class="date-real" name="date_to" id="dateToReal" value="{{dateTo}}">
-		</div>
-		<button type="submit" class="date-apply-btn">Apply</button>
-	</form>
 	<div class="view-toggle" id="viewToggle" style="margin-left:auto;">
 		<button class="on" data-view="grid" title="Grid">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
@@ -62,11 +83,7 @@
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
 		</button>
 	</div>
-	<a href="{{exportUrl}}" class="btn" download>
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-		Export
-	</a>
-</section>
+</div>
 
 <section class="accounts-grid" id="grid">{{gridCards}}</section>
 
@@ -93,6 +110,14 @@
 <script>
 const ACCOUNTS_DATA = {{accountsData}};
 {{clientJs}}
+// Period seg — clear dates + submit form immediately
+document.querySelectorAll('#periodSeg button').forEach(function(b){
+	b.addEventListener('click',function(){
+		document.getElementById('periodInput').value=b.dataset.period;
+		['dateFromReal','dateToReal','dateFrom-txt','dateTo-txt'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+		document.getElementById('filterForm').submit();
+	});
+});
 // Date picker overlay — dd/mm/yyyy display
 ['dateFromReal','dateToReal'].forEach(function(id){
 	var r=document.getElementById(id),t=document.getElementById(id.replace('Real','-txt'));

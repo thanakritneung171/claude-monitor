@@ -8,16 +8,18 @@
 .acc-stat .delta { font-size: 14px; color: var(--ink-3); margin-top: 6px; font-weight: 500; }
 .acc-stat .delta.up { color: var(--good); }
 
-.toolbar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.toolbar .input-wrap { flex: 1 1 280px; }
-
-.date-range { display: flex; align-items: center; gap: 6px; }
+.filters { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.field { flex: 1 1 130px; min-width: 0; }
+.field.period { flex: 1.6 1 220px; }
+.field.dates { flex: 1 1 140px; }
+.field-actions { display: flex; gap: 8px; margin-left: auto; align-items: flex-end; }
+.field label { display: block; font-size: 16px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
 .date-wrap { position: relative; }
-.date-input { height: 36px; border: 1px solid var(--line-2); border-radius: 10px; padding: 0 10px; font-size: 13px; color: var(--ink); background: var(--bg); font-family: inherit; outline: none; width: 108px; cursor: pointer; }
-.date-real { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; cursor: pointer; border: none; background: transparent; }
-.date-sep { color: var(--ink-3); font-size: 14px; }
-.date-apply-btn { height: 36px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg); color: var(--ink); font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.12s; white-space: nowrap; }
-.date-apply-btn:hover { border-color: var(--peach-400); color: var(--peach-500); background: var(--card); }
+.date-real { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; cursor: pointer; border: none; background: transparent; z-index: 2; box-sizing: border-box; }
+
+.toolbar { margin-top: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar .input-wrap { flex: 1 1 280px; }
 
 .view-toggle { display: inline-flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 9px; padding: 3px; gap: 3px; height: 36px; }
 .view-toggle button { width: 36px; height: 28px; border: 0; background: transparent; border-radius: 7px; cursor: pointer; display: grid; place-items: center; color: var(--ink-2); transition: all 0.15s; }

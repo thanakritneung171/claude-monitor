@@ -109,18 +109,13 @@ function barRowsHtml(items: { name: string; n: number; cost: number }[], style: 
 	}).join('');
 }
 
-function periodSeg(period: string, identity: string, clientF: string, modelF: string): string {
+function periodSeg(period: string): string {
 	const opts: { v: string; label: string }[] = [
 		{ v: '24h', label: '24h' }, { v: '7d', label: '7d' }, { v: '30d', label: '30d' }, { v: '90d', label: '90d' }, { v: 'all', label: 'All' },
 	];
 	return opts.map(o => {
-		const params = new URLSearchParams({ identity });
-		if (o.v !== '30d') params.set('period', o.v);
-		if (clientF) params.set('client', clientF);
-		if (modelF) params.set('model', modelF);
-		const url = '/account?' + params.toString();
 		const on = period === o.v ? ' class="on"' : '';
-		return `<a href="${url}"${on}>${o.label}</a>`;
+		return `<button type="button" data-period="${o.v}"${on}>${o.label}</button>`;
 	}).join('');
 }
 
@@ -213,35 +208,57 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 		</div>
 	</section>
 
-	<form method="get" action="/account" class="toolbar" id="filterForm">
-		<input type="hidden" name="identity" value="${esc(d.email)}">
-		<span class="label-inline">ช่วงเวลา</span>
-		<div class="seg" id="periodSeg">${periodSeg(period, d.email, clientFilter, modelFilter)}</div>
-		${dateFrom && dateTo ? `
-		<a class="date-custom-badge" href="/account?identity=${encodeURIComponent(d.email)}${clientFilter ? `&client=${encodeURIComponent(clientFilter)}` : ''}${modelFilter ? `&model=${encodeURIComponent(modelFilter)}` : ''}" title="ล้างช่วงวันที่">
-			📅 ${esc(toDisplayDate(dateFrom))} – ${esc(toDisplayDate(dateTo))} ✕
-		</a>
-		<input type="hidden" name="date_from" value="${esc(dateFrom)}">
-		<input type="hidden" name="date_to" value="${esc(dateTo)}">` : ''}
-		<span class="label-inline" style="margin-left:8px;">Client</span>
-		<div class="select-wrap" style="width:200px;">
-			<select class="select" name="client" onchange="this.form.submit()">
-				<option value=""${clientFilter === '' ? ' selected' : ''}>ทั้งหมด</option>
-				${clientOpts}
-			</select>
+	<form method="get" action="/account" class="filters" id="filterForm">
+		<div class="filter-row">
+			<input type="hidden" name="identity" value="${esc(d.email)}">
+			<div class="field period">
+				<label>ช่วงเวลา</label>
+				<div class="seg" id="periodSeg">${periodSeg(period)}</div>
+				<input type="hidden" name="period" id="periodInput" value="${esc(period === 'custom' ? '30d' : period)}">
+			</div>
+			<div class="date-group">
+				<label>ช่วงวันที่</label>
+				<div class="date-group-body">
+					<div class="date-wrap">
+						<input type="text" class="date-input dg-input" id="dateFrom-txt" value="${dateFrom ? toDisplayDate(dateFrom) : ''}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+						<input type="date" class="date-real" name="date_from" id="dateFromReal" value="${esc(dateFrom || '')}">
+					</div>
+					<span class="date-group-sep">–</span>
+					<div class="date-wrap">
+						<input type="text" class="date-input dg-input" id="dateTo-txt" value="${dateTo ? toDisplayDate(dateTo) : ''}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+						<input type="date" class="date-real" name="date_to" id="dateToReal" value="${esc(dateTo || '')}">
+					</div>
+					<button type="submit" class="btn primary dg-apply">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12"></polyline></svg>
+						Apply
+					</button>
+				</div>
+			</div>
+			<div class="field">
+				<label>Client</label>
+				<div class="select-wrap">
+					<select class="select" name="client" onchange="this.form.submit()">
+						<option value=""${clientFilter === '' ? ' selected' : ''}>ทั้งหมด</option>
+						${clientOpts}
+					</select>
+				</div>
+			</div>
+			<div class="field">
+				<label>Model</label>
+				<div class="select-wrap">
+					<select class="select" name="model" onchange="this.form.submit()">
+						<option value=""${modelFilter === '' ? ' selected' : ''}>ทั้งหมด</option>
+						${modelOpts}
+					</select>
+				</div>
+			</div>
+			<div class="field-actions">
+				<a id="exportLink" href="${buildExportUrl(d.email, period, clientFilter, modelFilter, dateFrom, dateTo)}" data-identity="${esc(d.email)}" data-date-from="${esc(dateFrom || periodToDateFrom(period))}" data-date-to="${esc(dateTo || todayBkk())}" class="btn" download>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+					Export Excel
+				</a>
+			</div>
 		</div>
-		<span class="label-inline" style="margin-left:8px;">Model</span>
-		<div class="select-wrap" style="width:170px;">
-			<select class="select" name="model" onchange="this.form.submit()">
-				<option value=""${modelFilter === '' ? ' selected' : ''}>ทั้งหมด</option>
-				${modelOpts}
-			</select>
-		</div>
-		${!dateFrom || !dateTo ? `<input type="hidden" name="period" value="${esc(period)}">` : ''}
-		<a href="${buildExportUrl(d.email, period, clientFilter, modelFilter, dateFrom, dateTo)}" class="btn" style="margin-left:auto;" download>
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-			Export
-		</a>
 	</form>
 
 	<section class="stats">

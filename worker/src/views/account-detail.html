@@ -24,4 +24,34 @@ const TOKEN_MIX = {{tokenMix}};
 const TREND_DATA = {{trendData}};
 const HEATMAP_DATA = {{heatmapData}};
 {{clientJs}}
+// Date picker overlay — dd/mm/yyyy display
+['dateFromReal','dateToReal'].forEach(function(id){
+	var r=document.getElementById(id),t=document.getElementById(id.replace('Real','-txt'));
+	if(!r||!t)return;
+	r.addEventListener('click',function(){try{r.showPicker();}catch(e){}});
+	r.addEventListener('change',function(){if(!r.value)return;var p=r.value.split('-');t.value=p[2]+'/'+p[1]+'/'+p[0];syncExport();});
+});
+// Period seg — clear dates + submit form immediately
+document.querySelectorAll('#periodSeg button').forEach(function(b){
+	b.addEventListener('click',function(){
+		document.getElementById('periodInput').value=b.dataset.period;
+		['dateFromReal','dateToReal','dateFrom-txt','dateTo-txt'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+		document.getElementById('filterForm').submit();
+	});
+});
+// Export URL — sync with current form values in real time
+function syncExport(){
+	var link=document.getElementById('exportLink');
+	if(!link)return;
+	var df=document.getElementById('dateFromReal').value||link.dataset.dateFrom;
+	var dt=document.getElementById('dateToReal').value||link.dataset.dateTo;
+	var cl=(document.querySelector('[name="client"]')||{}).value||'';
+	var mo=(document.querySelector('[name="model"]')||{}).value||'';
+	var p=new URLSearchParams({account:link.dataset.identity,date_from:df,date_to:dt});
+	if(cl)p.set('client',cl);
+	if(mo)p.set('model',mo);
+	link.href='/export?'+p.toString();
+}
+document.querySelectorAll('[name="client"],[name="model"]').forEach(function(el){el.addEventListener('change',syncExport);});
+syncExport();
 </script>

@@ -20,12 +20,25 @@
 .stat.featured .value { background: linear-gradient(135deg, var(--peach-500), #D45A2A); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .stat .delta { font-size: 14px; color: var(--ink-3); margin-top: 6px; font-weight: 500; }
 
-/* Toolbar */
-.toolbar { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.toolbar .label-inline { font-size: 16px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+/* Filters */
+.filters { margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
+.filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.field { flex: 1 1 130px; min-width: 0; }
+.field.period { flex: 2 1 260px; }
+.field.dates { flex: 1 1 140px; }
+.field-actions { display: flex; gap: 8px; margin-left: auto; align-items: flex-end; }
+.field label { display: block; font-size: 16px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+.date-wrap { position: relative; }
+.date-real { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; cursor: pointer; border: none; background: transparent; z-index: 2; box-sizing: border-box; }
 
-.date-custom-badge { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px solid var(--peach-300); border-radius: 10px; background: var(--peach-50); color: var(--peach-500); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: all 0.12s; }
-.date-custom-badge:hover { background: var(--peach-100); border-color: var(--peach-400); }
+/* Date group — date from / to / apply are visually one unit */
+.date-group { flex: 0 0 auto; }
+.date-group > label { display: block; font-size: 16px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+.date-group-body { display: inline-flex; align-items: center; gap: 0; border: 1.5px solid var(--peach-300); border-radius: 11px; background: var(--peach-50); overflow: hidden; }
+.date-group-sep { color: var(--ink-3); font-size: 14px; padding: 0 2px; flex-shrink: 0; }
+.dg-input { border: none; border-radius: 0; background: transparent; width: 108px; box-shadow: none; }
+.dg-input:hover, .dg-input:focus { border: none; outline: none; box-shadow: none; background: transparent; }
+.dg-apply { border-radius: 0 9px 9px 0; border: none; border-left: 1.5px solid var(--peach-300); margin: 0; height: 36px; }
 
 /* Charts row */
 .charts { margin-top: 14px; display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 12px; }

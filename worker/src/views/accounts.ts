@@ -126,6 +126,7 @@ export function renderAccounts(input: AccountsRenderInput): string {
 		'{{avgCallsPerAcct}}': num(avgCallsPerAcct),
 		'{{avgCost}}':        '$' + num(avgCost, 4),
 		'{{periodLabel}}':    periodLabelMap[period] ?? '30 วัน',
+		'{{periodValue}}': period === 'custom' ? '30d' : period,
 		'{{period7dOn}}':  period === '7d'  ? ' class="on"' : '',
 		'{{period30dOn}}': period === '30d' ? ' class="on"' : '',
 		'{{period90dOn}}': period === '90d' ? ' class="on"' : '',
