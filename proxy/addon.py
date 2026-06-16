@@ -10,6 +10,7 @@ Usage:
     mitmdump -s addon.py --listen-port 8080 --allow-hosts "claude.ai"
 """
 
+import hashlib
 import json
 import re
 import socket
@@ -51,22 +52,238 @@ if EMAIL_FILTER_ENABLED:
 else:
     print("[claude-monitor] email filter OFF — logging all accounts")
 
-# Per-source-IP account cache. Was a single global before — broke on shared
-# proxy deployments because the latest claude.ai auth response from any user
-# would clobber the email for everyone. Keyed by client IP so each connecting
-# host carries its own identity; ClaudeAccountSniffer rewrites the slot when
-# the user switches account, so one person can have multiple accounts.
-_ACCOUNT_BY_IP: dict[str, dict] = {}
+# ── Identity caches — keyed by EMAIL (IP is NEVER used as identity) ──────────
+# Each prompt request carries its own identity token, so we resolve identity
+# from the request itself and key the attribute caches by email (VPN-safe):
+#   • api.anthropic.com/v1/messages → Bearer JWT (email claim)        [_jwt_email]
+#   • claude.ai/.../completion       → session cookie → email map     [_session_key]
+_ACCOUNT_BY_EMAIL: dict[str, dict] = {}   # email -> {name, uuid, account_id, org_id}
+_DEVICE_BY_EMAIL:  dict[str, dict] = {}   # email -> {app_version, os_type, os_version, host_arch, terminal, device_id, mac_address}
+_EMAIL_BY_SESSION: dict[str, str]  = {}   # sha256(sessionKey cookie) -> email   (claude.ai chat)
+_EMAIL_BY_TOKEN:   dict[str, str]  = {}   # sha256(OAuth Bearer token)  -> email   (clients that send a JWT)
+_EMAIL_BY_UUID:    dict[str, str]  = {}   # account_uuid -> email   (Claude Code — PRIMARY link, even with raw sk- keys)
+
+def _device_info(email: str) -> dict:
+    """Return device/env + account fields for an account email (all default '')."""
+    d = _DEVICE_BY_EMAIL.get(email, {})
+    a = _ACCOUNT_BY_EMAIL.get(email, {})
+    return {
+        "app_version": d.get("app_version", ""),
+        "os_type":     d.get("os_type",     ""),
+        "os_version":  d.get("os_version",  ""),
+        "host_arch":   d.get("host_arch",   ""),
+        "terminal":    d.get("terminal",    ""),
+        "device_id":   d.get("device_id",   ""),
+        "mac_address": d.get("mac_address", ""),
+        "account_id":  a.get("account_id",  ""),
+        "org_id":      a.get("org_id",      ""),
+    }
 
 def _client_ip(flow) -> str:
+    """Client source IP — recorded on logs as AUDIT only, never used as identity."""
     try:
         peer = flow.client_conn.peername
         return peer[0] if peer else ""
     except Exception:
         return ""
 
+
+def _decode_jwt_payload(token: str) -> dict:
+    """Decode JWT payload (middle part) without verifying signature."""
+    try:
+        import base64 as _b64
+        parts = token.split(".")
+        if len(parts) < 2:
+            return {}
+        seg = parts[1]
+        seg += "=" * (4 - len(seg) % 4)
+        return json.loads(_b64.urlsafe_b64decode(seg))
+    except Exception:
+        return {}
+
+
+def _jwt_email(flow) -> str:
+    """Email from the request's own Bearer JWT (CLI/VSCode/Desktop-Code/Cowork).
+    Returns '' when there is no JWT (raw API key, or non-/v1/messages clients)."""
+    auth = flow.request.headers.get("Authorization", "") or \
+           flow.request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return ""
+    token = auth[7:]
+    if token.startswith("sk-"):     # raw API key — not a JWT
+        return ""
+    payload = _decode_jwt_payload(token)
+    email = payload.get("email") or payload.get("email_address") or ""
+    return email if _looks_like_email(email) else ""
+
+
+def _session_key(flow) -> str:
+    """Stable per-login key for claude.ai chat: sha256 of the sessionKey cookie.
+    Hashed so we never hold the raw session token in memory. '' when no cookie."""
+    raw = flow.request.headers.get("Cookie", "") or \
+          flow.request.headers.get("cookie", "")
+    if not raw:
+        return ""
+    token = ""
+    for part in raw.split(";"):
+        k, _, v = part.strip().partition("=")
+        if k in ("sessionKey", "__Secure-sessionKey"):
+            token = v.strip()
+            break
+    if not token:
+        return ""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _bearer_key(flow) -> str:
+    """Stable per-login key for Claude Code: sha256 of the OAuth Bearer token.
+    The SAME token rides every request from a logged-in Claude Code session —
+    /v1/messages, count_tokens AND /api/claude_code/metrics. The metrics body
+    carries user.email but the /v1/messages JWT does not, so we link the two by
+    this token instead of by client IP (VPN-safe). '' for raw sk- API keys."""
+    auth = flow.request.headers.get("Authorization", "") or \
+           flow.request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return ""
+    token = auth[7:].strip()
+    if not token or token.startswith("sk-"):
+        return ""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _meta_account_uuid(flow) -> str:
+    """account_uuid from a /v1/messages request body's metadata.user_id.
+
+    Claude Code authenticates with a raw API key (no JWT), but every request
+    body carries:  metadata.user_id = '{"device_id":"…","account_uuid":"…",
+    "session_id":"…"}'  — a JSON string. The account_uuid is the stable
+    per-account id (VPN-safe) and matches user.account_uuid on the metrics
+    endpoint, so it links a prompt to the email metrics revealed."""
+    try:
+        body = json.loads(flow.request.content)
+    except Exception:
+        return ""
+    meta = body.get("metadata") if isinstance(body, dict) else None
+    uid  = meta.get("user_id") if isinstance(meta, dict) else None
+    if not uid:
+        return ""
+    if isinstance(uid, str):
+        try:
+            uid = json.loads(uid)
+        except Exception:
+            return ""
+    return str(uid.get("account_uuid") or "") if isinstance(uid, dict) else ""
+
+
 def current_email(flow) -> str:
-    return _ACCOUNT_BY_IP.get(_client_ip(flow), {}).get("email", "")
+    """Resolve the account email for the prompt being logged — NO IP.
+      1) JWT on the request itself     (clients whose token carries an email claim)
+      2) account_uuid in metadata      (Claude Code — works with raw sk- API keys)
+      3) OAuth token → email map       (clients that send a JWT, email from metrics)
+      4) session cookie → email map    (claude.ai chat, filled by ClaudeAccountSniffer)"""
+    email = _jwt_email(flow)
+    if email:
+        return email
+    uuid_ = _meta_account_uuid(flow)
+    if uuid_ and _EMAIL_BY_UUID.get(uuid_):
+        return _EMAIL_BY_UUID[uuid_]
+    tok = _bearer_key(flow)
+    if tok and _EMAIL_BY_TOKEN.get(tok):
+        return _EMAIL_BY_TOKEN[tok]
+    sess = _session_key(flow)
+    return _EMAIL_BY_SESSION.get(sess, "") if sess else ""
+
+
+def _set_account_email(email: str, name: str = "", uuid_: str = "",
+                       account_id: str = "", org_id: str = "", source: str = "") -> None:
+    """Merge account attributes into the email-keyed cache (non-destructive fill)."""
+    if not _looks_like_email(email):
+        return
+    old = _ACCOUNT_BY_EMAIL.get(email)
+    slot = old or {}
+    if email not in _ACCOUNT_BY_EMAIL:
+        print(f"[claude-account] ✓ {email} via {source}")
+    new = {
+        "name":       name       or slot.get("name",       ""),
+        "uuid":       uuid_      or slot.get("uuid",       ""),
+        "account_id": account_id or slot.get("account_id", ""),
+        "org_id":     org_id     or slot.get("org_id",     ""),
+    }
+    _ACCOUNT_BY_EMAIL[email] = new
+    changed = new != old
+    # account_uuid → email: the PRIMARY link for Claude Code prompts (which carry
+    # account_uuid in metadata.user_id but no email). Fed by every source that
+    # knows both — metrics, bridge connect, claude.ai sniffer.
+    if uuid_ and _EMAIL_BY_UUID.get(uuid_) != email:
+        _EMAIL_BY_UUID[uuid_] = email
+        changed = True
+    # Persist on change so identity (incl. account_id/uuid/org) survives restarts.
+    if changed:
+        _persist_identity()
+
+
+def _set_session_email(sess: str, email: str, name: str = "", uuid_: str = "") -> None:
+    """Map a claude.ai session cookie → email (for the chat completion path)."""
+    if not sess or not _looks_like_email(email):
+        return
+    if _EMAIL_BY_SESSION.get(sess) != email:
+        _EMAIL_BY_SESSION[sess] = email
+        print(f"[claude-account] ✓ session → {email}")
+    _set_account_email(email, name=name, uuid_=uuid_, source="claude.ai")
+
+
+# ── Persistent identity cache ────────────────────────────────────────────────
+# account_uuid/email + account & device attributes are not secrets (unlike
+# session tokens), so we persist the learned identity across restarts. This
+# removes the cold-start window where, right after a restart, a resolved email
+# would log with blank account_id/uuid/os/version until that user's metrics
+# re-fires. Stored as one JSON file with three sections.
+IDENTITY_FILE = Path(__file__).resolve().parent / "identity_cache.json"
+UUID_MAP_FILE = Path(__file__).resolve().parent / "uuid_email_map.json"  # legacy (load-only)
+
+def _persist_identity() -> None:
+    try:
+        IDENTITY_FILE.write_text(json.dumps({
+            "uuid_email": _EMAIL_BY_UUID,
+            "account":    _ACCOUNT_BY_EMAIL,
+            "device":     _DEVICE_BY_EMAIL,
+        }, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+def _load_identity_seed() -> None:
+    """Restore the identity caches from disk at startup so resolved prompts get
+    full account/device info immediately (no wait for metrics). To map an
+    account that never emits metrics, add its "account_uuid": "email" under the
+    "uuid_email" section of IDENTITY_FILE — loaded here, preserved on saves."""
+    try:
+        if IDENTITY_FILE.exists():
+            data = json.loads(IDENTITY_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for u, e in (data.get("uuid_email") or {}).items():
+                    if u and _looks_like_email(e):
+                        _EMAIL_BY_UUID[u] = e
+                for em, a in (data.get("account") or {}).items():
+                    if _looks_like_email(em) and isinstance(a, dict):
+                        _ACCOUNT_BY_EMAIL[em] = a
+                for em, d in (data.get("device") or {}).items():
+                    if _looks_like_email(em) and isinstance(d, dict):
+                        _DEVICE_BY_EMAIL[em] = d
+    except Exception as exc:
+        print(f"[claude-monitor] WARN could not load identity cache: {exc}")
+    # Back-compat: merge the legacy flat uuid→email file if it still exists.
+    try:
+        if UUID_MAP_FILE.exists():
+            data = json.loads(UUID_MAP_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for u, e in data.items():
+                    if u and _looks_like_email(e) and u not in _EMAIL_BY_UUID:
+                        _EMAIL_BY_UUID[u] = e
+    except Exception:
+        pass
+    print(f"[claude-monitor] identity seed: {len(_EMAIL_BY_UUID)} uuid→email, "
+          f"{len(_ACCOUNT_BY_EMAIL)} accounts, {len(_DEVICE_BY_EMAIL)} devices loaded")
+
 
 HOSTNAME = socket.gethostname()
 
@@ -458,12 +675,17 @@ class ClaudeAPIMonitor:
             return
 
         payload = _decode_jwt_payload(token)
+        # One-time debug: reveal which claims the prompt token actually carries.
+        # Confirms whether 'email' is present (it isn't for Claude Code CLI) and
+        # whether a stable id like 'sub' exists for future keying. Remove later.
+        if not getattr(ClaudeAPIMonitor, "_dbg_claims", False):
+            ClaudeAPIMonitor._dbg_claims = True
+            print(f"[claude-api][debug] /v1/messages JWT claim keys = {sorted(payload.keys())}")
         email = payload.get("email") or payload.get("email_address") or ""
         if not _looks_like_email(email):
             return
 
-        _set_account(
-            _client_ip(flow),
+        _set_account_email(
             email,
             name=payload.get("name") or payload.get("full_name") or "",
             uuid_=str(payload.get("sub") or payload.get("user_id") or ""),
@@ -556,6 +778,7 @@ class ClaudeAPIMonitor:
             "cache_read_tokens":     cr,
             "total_tokens":          inp + out + cr + cw,
             "cost_usd":              _calc_cost(model, inp, out, cr, cw),
+            **_device_info(email),
         }
 
         _write_local(log)
@@ -650,6 +873,7 @@ class ClaudeDesktopMonitor:
             "cache_read_tokens":     cr,
             "total_tokens":          inp + out + cr + cw,
             "cost_usd":              _calc_cost(model, inp, out, cr, cw),
+            **_device_info(email),
         }
 
         _write_local(log)
@@ -799,18 +1023,15 @@ class ClaudeAccountSniffer:
 
         info = _extract_current_user(data)
 
-        # Whitelisted endpoint → trust + cache (scoped to this client's IP)
+        # Whitelisted endpoint → map this claude.ai session cookie → email.
         if info and any(rgx.match(path) for rgx in self.WHITELIST_RES):
-            ip    = _client_ip(flow)
-            slot  = _ACCOUNT_BY_IP.get(ip, {})
-            email = info["email"]
-            if email != slot.get("email"):
-                _ACCOUNT_BY_IP[ip] = {
-                    "email": email,
-                    "name":  info.get("name", "") or slot.get("name", ""),
-                    "uuid":  info.get("uuid", "") or slot.get("uuid", ""),
-                }
-                print(f"[claude-account] ✓ detected email: {email} (from {path}, ip={ip})")
+            sess = _session_key(flow)
+            if sess:
+                _set_session_email(sess, info["email"],
+                                   name=info.get("name", ""),
+                                   uuid_=info.get("uuid", ""))
+            else:
+                print(f"[claude-account] ⚠ no sessionKey cookie on {path} — cannot map {info['email']}")
             return
 
         # Non-whitelisted but contains a current-user-shaped email → log for review
@@ -911,19 +1132,34 @@ class ClaudeBridgeMonitor:
                 ""
             )
             if _looks_like_email(bridge_email):
-                ip  = sess["src_ip"]
-                old = _ACCOUNT_BY_IP.get(ip, {}).get("email", "")
-                if bridge_email != old:
-                    _ACCOUNT_BY_IP[ip] = {
-                        "email": bridge_email,
-                        "name":  acct_blob.get("full_name") or acct_blob.get("name") or "",
-                        "uuid":  acct_blob.get("uuid") or "",
-                    }
-                    print(f"[claude-bridge] ✓ account switch detected: {old or '(none)'} → {bridge_email}")
+                sess["email"] = bridge_email
+                _set_account_email(
+                    bridge_email,
+                    name=acct_blob.get("full_name") or acct_blob.get("name") or "",
+                    uuid_=acct_blob.get("uuid") or "",
+                    source="bridge",
+                )
+
+            # Capture device_id from connect handshake if present (keyed by email)
+            device_id = str(data.get("device_id") or "")
+            if device_id and sess.get("email"):
+                slot = dict(_DEVICE_BY_EMAIL.get(sess["email"], {}))
+                if slot.get("device_id") != device_id:
+                    slot["device_id"] = device_id
+                    _DEVICE_BY_EMAIL[sess["email"]] = slot
+                    print(f"[claude-bridge] device_id: {device_id[:16]}...")
             return
 
         if t in ("ping", "pong", "error"):
             return
+
+        # Capture device_id from any message carrying target_device_id (e.g. tool_call)
+        tid = str(data.get("target_device_id") or "")
+        if tid and sess.get("email"):
+            slot = dict(_DEVICE_BY_EMAIL.get(sess["email"], {}))
+            if not slot.get("device_id"):
+                slot["device_id"] = tid
+                _DEVICE_BY_EMAIL[sess["email"]] = slot
 
         if msg.from_client:
             self._handle_request(sess, data)
@@ -1010,7 +1246,7 @@ class ClaudeBridgeMonitor:
         inp, out = req["inp"], req["out"]
         cr, cw   = req["cr"],  req["cw"]
 
-        email = _ACCOUNT_BY_IP.get(sess["src_ip"], {}).get("email", "")
+        email = sess.get("email", "")
         if not _should_log(email):
             print(f"[claude-bridge] SKIP (filter) | {sess['client']} | {model} | email={email or '(none)'}")
             return
@@ -1033,6 +1269,7 @@ class ClaudeBridgeMonitor:
             "cache_read_tokens":     cr,
             "total_tokens":          inp + out + cr + cw,
             "cost_usd":              _calc_cost(model, inp, out, cr, cw),
+            **_device_info(email),
         }
 
         _write_local(log)
@@ -1158,13 +1395,180 @@ class ClaudeConnectionLogger:
         print(f"[claude-conn] SNI seen: {sni}")
 
 
+# ── Claude Code metrics monitor ──────────────────────────────────────────────
+class ClaudeCodeMetricsMonitor:
+    """
+    Intercepts POST api.anthropic.com/api/claude_code/metrics to capture
+    OS/arch/app-version/terminal + account_id/org_id, keyed by user.email.
+    Runs on .request() so the cache is ready before the next /v1/messages call.
+    """
+
+    def request(self, flow: http.HTTPFlow):
+        if flow.request.host != "api.anthropic.com":
+            return
+        if flow.request.path.split("?", 1)[0] != "/api/claude_code/metrics":
+            return
+        if flow.request.method != "POST":
+            return
+
+        try:
+            body = json.loads(flow.request.content)
+        except Exception:
+            return
+
+        res = body.get("resource_attributes") or {}
+
+        terminal = ""
+        for m in body.get("metrics") or []:
+            for dp in m.get("data_points") or []:
+                t = (dp.get("attributes") or {}).get("terminal.type") or ""
+                if t:
+                    terminal = str(t)
+                    break
+            if terminal:
+                break
+
+        # Pull user identity from the first data_point that has user.email.
+        # All metric types (session.count, cost.usage, token.usage, etc.) carry
+        # the same user fields — grab the first one found.
+        dp_attrs: dict = {}
+        for m in body.get("metrics") or []:
+            for dp in m.get("data_points") or []:
+                a = dp.get("attributes") or {}
+                if isinstance(a, dict) and _looks_like_email(str(a.get("user.email", ""))):
+                    dp_attrs = a
+                    break
+            if dp_attrs:
+                break
+
+        # No user.email in this batch → nothing to key the device cache on.
+        metrics_email = str(dp_attrs.get("user.email") or "")
+        if not _looks_like_email(metrics_email):
+            return
+
+        # Link this session's OAuth token → email. The same token is sent on the
+        # user's /v1/messages prompts (whose JWT carries NO email claim), so this
+        # lets current_email() resolve those prompts by token — replacing the old
+        # per-IP correlation (VPN-safe). Refreshed automatically on token rotation.
+        tok = _bearer_key(flow)
+        if tok and _EMAIL_BY_TOKEN.get(tok) != metrics_email:
+            _EMAIL_BY_TOKEN[tok] = metrics_email
+            print(f"[claude-metrics] token → {metrics_email}")
+
+        slot = dict(_DEVICE_BY_EMAIL.get(metrics_email, {}))
+        for src, dst in [
+            ("service.version", "app_version"),
+            ("os.type",         "os_type"),
+            ("os.version",      "os_version"),
+            ("host.arch",       "host_arch"),
+        ]:
+            v = str(res.get(src) or "")
+            if v:
+                slot[dst] = v
+        if terminal:
+            slot["terminal"] = terminal
+
+        # device_id = user.account_uuid (stable per account, VPN-independent)
+        account_uuid = str(dp_attrs.get("user.account_uuid") or "")
+        if account_uuid and not slot.get("device_id"):
+            slot["device_id"] = account_uuid
+
+        # mac_address: not present in any Claude Code traffic — leave empty
+        device_changed = slot != _DEVICE_BY_EMAIL.get(metrics_email)
+        _DEVICE_BY_EMAIL[metrics_email] = slot
+
+        # Update account identity from metrics (keyed by email — VPN-safe).
+        account_id = str(dp_attrs.get("user.account_id") or "")
+        org_id     = str(dp_attrs.get("organization.id") or "")
+        _set_account_email(metrics_email,
+                           uuid_=account_uuid,
+                           account_id=account_id,
+                           org_id=org_id,
+                           source="metrics")
+        # Persist device attrs too (account-only change above may not have fired).
+        if device_changed:
+            _persist_identity()
+
+        print(f"[claude-metrics] {metrics_email} ver={slot.get('app_version')} "
+              f"os={slot.get('os_type')}/{slot.get('os_version')} "
+              f"arch={slot.get('host_arch')} terminal={terminal} "
+              f"uuid={account_uuid[:8] + '...' if account_uuid else '-'}")
+
+
+# ── Segment analytics monitor — REMOVED ─────────────────────────────────────
+# Previously intercepted a-api.anthropic.com/v1/b to capture anonymousId + email
+# keyed by client IP (a browser-VPN-safe fallback). IP is no longer used as
+# identity, and that host doesn't carry the claude.ai session cookie, so the
+# Segment batch can't be correlated to a chat session — anon_id is now vestigial.
+# Browser/Desktop chat email now comes from the session-cookie map
+# (ClaudeAccountSniffer); Cowork/Desktop-Code go through /v1/messages with a JWT.
+
+
+# ── TEMPORARY identity debug ─────────────────────────────────────────────────
+# Writes one line per /v1/messages and /api/claude_code/metrics request to
+# log/identity_debug.jsonl so we can see (from a file, not console) WHY email
+# isn't resolving: does each endpoint carry a Bearer token, do the two tokens
+# MATCH (same tok_key), what JWT claims exist, and is there a body user_id.
+# Remove this class + its addons entry once identity is confirmed working.
+class IdentityDebug:
+    FILE = LOG_DIR / "identity_debug.jsonl"
+
+    def request(self, flow: http.HTTPFlow):
+        if flow.request.host != "api.anthropic.com":
+            return
+        ep = flow.request.path.split("?", 1)[0]
+        if ep not in ("/v1/messages", "/api/claude_code/metrics"):
+            return
+
+        auth = flow.request.headers.get("Authorization", "") or \
+               flow.request.headers.get("authorization", "")
+        scheme, tok_key, claims = "(none)", "", []
+        if auth:
+            scheme = auth.split(" ", 1)[0].lower() or "(raw)"
+            if auth.lower().startswith("bearer "):
+                t = auth[7:].strip()
+                if t.startswith("sk-"):
+                    scheme = "sk-key"
+                elif t:
+                    tok_key = hashlib.sha256(t.encode("utf-8")).hexdigest()[:12]
+                    claims  = sorted(_decode_jwt_payload(t).keys())
+
+        meta_user = ""
+        try:
+            body = json.loads(flow.request.content)
+            meta = body.get("metadata") or {}
+            meta_user = str(meta.get("user_id", "")) if isinstance(meta, dict) else ""
+        except Exception:
+            pass
+
+        entry = {
+            "ts":           int(datetime.now().timestamp() * 1000),
+            "ep":           "messages" if ep == "/v1/messages" else "metrics",
+            "auth_scheme":  scheme,
+            "tok_key":      tok_key,        # sha256[:12] — compare across endpoints
+            "jwt_claims":   claims,         # claim KEYS only (no values)
+            "acct_uuid":    _meta_account_uuid(flow),   # extracted from metadata.user_id
+            "resolved":     current_email(flow),        # ← does identity resolve now?
+        }
+        try:
+            with open(self.FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+
+# Seed the identity map from disk + manual roster before traffic starts.
+_load_identity_seed()
+
 addons = [
-    ClaudeConnectionLogger(),   # log all hosts client connects to (incl. passthrough)
-    ToolSchemaFixer(),          # rewrite tool input_schema with top-level oneOf/allOf/anyOf
-    ClaudeAccountSniffer(),     # detect email first so completions know it
-    ClaudeAPIMonitor(),         # api.anthropic.com (API key / Claude Code CLI & VSCode)
-    ClaudeDesktopMonitor(),     # claude.ai chat completion (Desktop app / browser)
-    ClaudeDesktopDiscovery(),   # log other claude.ai POSTs for debugging
-    ClaudeBridgeMonitor(),      # bridge.claudeusercontent.com — Claude Code OAuth sessions
-    ClaudeBridgeDiscovery(),    # log unknown bridge WS frames for debugging
+    IdentityDebug(),               # TEMP: diagnose why email isn't resolving (remove later)
+    ClaudeConnectionLogger(),      # log all hosts client connects to (incl. passthrough)
+    ToolSchemaFixer(),             # rewrite tool input_schema with top-level oneOf/allOf/anyOf
+    ClaudeAccountSniffer(),        # detect email first so completions know it
+    ClaudeCodeMetricsMonitor(),    # capture OS/arch/version + account_id/org_id (keyed by email)
+    ClaudeAPIMonitor(),            # api.anthropic.com (API key / Claude Code CLI & VSCode)
+    ClaudeDesktopMonitor(),        # claude.ai chat completion (Desktop app / browser)
+    ClaudeDesktopDiscovery(),      # log other claude.ai POSTs for debugging
+    ClaudeBridgeMonitor(),         # bridge.claudeusercontent.com — Claude Code OAuth sessions
+    ClaudeBridgeDiscovery(),       # log unknown bridge WS frames for debugging
 ]

@@ -97,7 +97,7 @@ export function renderAccounts(input: AccountsRenderInput): string {
 
 	const dateSuffix = input.dateFrom && input.dateTo
 		? `&date_from=${encodeURIComponent(input.dateFrom)}&date_to=${encodeURIComponent(input.dateTo)}`
-		: '';
+		: (period && period !== 'custom' ? `&period=${encodeURIComponent(period)}` : '');
 	const gridCards = data.accounts.map(a => gridCard(a, dateSuffix)).join('');
 	const tableRows = data.accounts.map(a => tableRow(a, dateSuffix)).join('');
 

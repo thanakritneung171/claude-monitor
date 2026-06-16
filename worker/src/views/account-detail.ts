@@ -378,9 +378,19 @@ export function renderAccountDetail(input: AccountDetailRenderInput): string {
 	const trendData = JSON.stringify(data.costTrend);
 	const heatmapData = JSON.stringify(data.heatmap);
 
+	const backParams = new URLSearchParams();
+	if (dateFrom && dateTo) {
+		backParams.set('date_from', dateFrom);
+		backParams.set('date_to', dateTo);
+	} else if (period && period !== 'custom') {
+		backParams.set('period', period);
+	}
+	const backUrl = backParams.toString() ? `/accounts?${backParams.toString()}` : '/accounts';
+
 	const replacements: Record<string, string> = {
 		'{{clientJs}}':  clientJs,
 		'{{email}}':     esc(data.email),
+		'{{backUrl}}':   esc(backUrl),
 		'{{bodyHtml}}':  bodyHtml,
 		'{{tokenMix}}':  tokenMix,
 		'{{trendData}}': trendData,

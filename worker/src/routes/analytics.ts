@@ -2,9 +2,9 @@ import type { Env, SessionUser } from '../types';
 import { fetchCostTimeseries, fetchHourOfDayHeatmap, type BucketPoint } from '../db/queries-extra';
 import { renderAnalytics } from '../views/analytics';
 
-type Period = '24h' | '7d' | '30d' | '90d';
+type Period = '24h' | '7d' | '30d' | '90d' | 'custom';
 
-function rangeFor(p: Period): { fromMs: number; toMs: number; groupBy: 'day' | 'hour' } {
+function rangeFor(p: Exclude<Period, 'custom'>): { fromMs: number; toMs: number; groupBy: 'day' | 'hour' } {
 	const now = Date.now();
 	const day = 86400000;
 	if (p === '24h') return { fromMs: now - day,      toMs: now, groupBy: 'hour' };
@@ -13,10 +13,30 @@ function rangeFor(p: Period): { fromMs: number; toMs: number; groupBy: 'day' | '
 	return { fromMs: now - 30 * day, toMs: now, groupBy: 'day' };
 }
 
+// Parse YYYY-MM-DD as a Bangkok-local day boundary (UTC+7).
+function bkkDayMs(date: string, endOfDay: boolean): number {
+	const suffix = endOfDay ? 'T23:59:59.999+07:00' : 'T00:00:00.000+07:00';
+	return new Date(date + suffix).getTime();
+}
+
 export async function handleAnalytics(url: URL, env: Env, user?: SessionUser): Promise<Response> {
-	const periodRaw = url.searchParams.get('period') ?? '30d';
-	const period: Period = (['24h', '7d', '30d', '90d'] as const).includes(periodRaw as Period) ? (periodRaw as Period) : '30d';
-	const { fromMs, toMs, groupBy } = rangeFor(period);
+	const dateFrom = url.searchParams.get('date_from') ?? '';
+	const dateTo   = url.searchParams.get('date_to')   ?? '';
+
+	let period: Period;
+	let fromMs: number, toMs: number, groupBy: 'day' | 'hour';
+	if (dateFrom && dateTo) {
+		period = 'custom';
+		fromMs = bkkDayMs(dateFrom, false);
+		toMs   = bkkDayMs(dateTo, true);
+		groupBy = 'day';
+	} else {
+		const periodRaw = url.searchParams.get('period') ?? '30d';
+		const p: Exclude<Period, 'custom'> = (['24h', '7d', '30d', '90d'] as const).includes(periodRaw as Exclude<Period, 'custom'>)
+			? (periodRaw as Exclude<Period, 'custom'>) : '30d';
+		period = p;
+		({ fromMs, toMs, groupBy } = rangeFor(p));
+	}
 
 	const [timeseries, heatmap, modelRows] = await Promise.all([
 		fetchCostTimeseries(env, fromMs, toMs, groupBy),
@@ -68,6 +88,6 @@ export async function handleAnalytics(url: URL, env: Env, user?: SessionUser): P
 		cacheWrite: timeseries.reduce((s, p) => s + p.cacheWrite, 0),
 	};
 
-	const html = renderAnalytics({ user, period, fromMs, toMs, timeseries, heatmap, perModelSeries, totals });
+	const html = renderAnalytics({ user, period, fromMs, toMs, dateFrom, dateTo, timeseries, heatmap, perModelSeries, totals });
 	return new Response(html, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
 }

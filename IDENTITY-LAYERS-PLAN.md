@@ -5,6 +5,31 @@
 
 ---
 
+> ## ⚠️ SUPERSEDED (2026-06) — เลิกใช้ IP เป็น identity แล้ว
+>
+> เอกสารด้านล่างคือ **ดีไซน์เดิม** ที่ใช้ **IP เป็นแกน identity** (4 ชั้น L1–L4 + ตาราง `ip_identity`
+> + "ยืม email ตาม IP") — **เก็บไว้เป็นบันทึกประวัติเท่านั้น** ปัจจุบันเลิกใช้แล้วเพราะ **VPN เปลี่ยน IP
+> ทำให้ attribute ผิดคน** (user A เคยใช้ IP X, วันนี้ user B ได้ IP X → log ของ B ถูกยืม email ของ A)
+>
+> ### โมเดลปัจจุบัน — identity = email (ไม่ใช้ IP)
+> ทุก prompt มี **token ระบุตัวตนของตัวเองติดมากับ request** อยู่แล้ว → ใช้ token นั้นแทน IP:
+>
+> | Endpoint | Clients | ที่มาของ email |
+> |---|---|---|
+> | `api.anthropic.com/v1/messages` | CLI / VSCode / Desktop-Code / **Cowork** | **Bearer JWT** ของ request เอง (`_jwt_email`) |
+> | `claude.ai/.../completion` | plain Desktop / web **chat** | **session cookie → email** map (`_session_key` + `ClaudeAccountSniffer`) |
+>
+> - device/account info (OS/arch/`account_id`/`org_id`) cache **keyed ด้วย email** (จาก metrics endpoint) — `_DEVICE_BY_EMAIL` / `_ACCOUNT_BY_EMAIL`
+> - ตาราง **`ip_identity` + `lookupIdentityByIp` (L3 ยืม email ตาม IP) → ลบทิ้งแล้ว** (migration [`0011_drop_ip_identity.sql`](worker/migrations/0011_drop_ip_identity.sql))
+> - **`email_identity`** (keyed ด้วย email) = canonical identity record (หน้า New Identity)
+> - `client_ip` ยังเก็บใน `api_logs` แต่ **เป็น audit เท่านั้น — ไม่ใช้ระบุตัวตน**
+> - **`ip_identity_backup`** = snapshot แช่แข็งของดีไซน์เดิม (ยังโชว์ที่หน้า `/identity`)
+> - `ClaudeSegmentMonitor` (anonymousId ตาม IP) → **ลบออกจาก addons** (anon_id หมดความจำเป็น)
+>
+> โค้ดจริง: `current_email()` / `_jwt_email()` / `_session_key()` ใน [`proxy/addon.py`](proxy/addon.py)
+>
+> ---
+
 ## 1. ภาพรวม
 
 ### ปัญหา

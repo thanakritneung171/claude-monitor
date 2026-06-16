@@ -82,6 +82,7 @@
 .logs-head { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--line); background: var(--bg-soft); }
 .logs-head h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .logs-head .sub { color: var(--ink-3); font-size: 14px; margin-top: 2px; }
+.logs-head .sub-note { color: #dc2626; font-size: 13px; margin-top: 4px; font-weight: 600; }
 .pager { display: flex; align-items: center; gap: 14px; color: var(--ink-2); font-size: 16px; }
 .pager .seg-sm { height: 32px; padding: 3px; }
 .pager .seg-sm button { font-size: 16px; padding: 0 10px; }

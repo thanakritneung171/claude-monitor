@@ -1,6 +1,6 @@
 import type { Env, ApiLog } from '../types';
 import { json } from '../lib/format';
-import { insertLog, lookupIdentityByIp, upsertIdentity } from '../db/queries';
+import { insertLog, upsertEmailIdentity } from '../db/queries';
 import { getEffectiveIngestKey } from '../lib/auth';
 
 export async function handleLog(request: Request, env: Env): Promise<Response> {
@@ -11,22 +11,30 @@ export async function handleLog(request: Request, env: Env): Promise<Response> {
 	}
 	try {
 		const b = await request.json() as Partial<ApiLog>;
-		const ip = b.client_ip ?? '';
 
-		// L3 fill-in: empty email + known IP → borrow current owner from ip_identity
-		if (!b.account_email && ip) {
-			const known = await lookupIdentityByIp(env, ip);
-			if (known?.email) {
-				b.account_email = known.email;
-			}
-		}
-
-		// L4 insert (always)
+		// L4 insert (always) — client_ip is stored as audit only, never used as identity.
 		await insertLog(env, b);
 
-		// L3 sync: log has a real email → upsert mapping for next empty log
-		if (b.account_email && ip) {
-			await upsertIdentity(env, ip, b.account_email);
+		// Identity sync: log has a real email → update the canonical email_identity record.
+		if (b.account_email) {
+			const raw = b as Record<string, unknown>;
+			const ts = typeof raw.ts === 'number' ? raw.ts : 0;
+
+			await upsertEmailIdentity(env, {
+				email:      b.account_email,
+				name:       String(raw.name        ?? ''),
+				accountId:  String(raw.account_id  ?? ''),
+				uuid:       String(raw.device_id   ?? ''),
+				orgId:      String(raw.org_id      ?? ''),
+				anonId:     String(raw.anon_id     ?? ''),
+				osType:     String(raw.os_type     ?? ''),
+				osVersion:  String(raw.os_version  ?? ''),
+				hostArch:   String(raw.host_arch   ?? ''),
+				appVersion: String(raw.app_version ?? ''),
+				terminal:   String(raw.terminal    ?? ''),
+				clientType: b.client ?? '',
+				ts,
+			});
 		}
 
 		return json({ ok: true });

@@ -27,14 +27,14 @@ export interface ApiLog {
 	cache_read_tokens: number;
 	total_tokens: number;
 	cost_usd: number;
-}
-
-export interface IpIdentity {
-	ip: string;
-	email: string;
-	name: string;
-	uuid: string;
-	updated_ms: number;
+	app_version?: string;
+	os_type?: string;
+	os_version?: string;
+	host_arch?: string;
+	terminal?: string;
+	device_id?: string;
+	mac_address?: string;
+	anon_id?: string;
 }
 
 export interface Filters {

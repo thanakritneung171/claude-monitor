@@ -39,6 +39,7 @@
 .sparkline-row .total { font-family: "JetBrains Mono", monospace; font-size: 18px; font-weight: 700; color: var(--ink); text-align: right; }
 
 .an-export-btn {
+	align-self: flex-end;
 	margin-left: auto;
 	display: inline-flex;
 	align-items: center;
@@ -56,6 +57,52 @@
 .an-export-btn:hover { background: var(--peach-100); color: var(--ink); }
 .an-export-btn::before { content: '↓'; font-size: 13px; }
 
+.an-toolbar { display: flex; gap: 10px; align-items: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.an-toolbar > span:first-child { padding-bottom: 7px; }
+.an-toolbar .seg { align-self: flex-end; }
+.an-tb-div { width: 1px; height: 30px; align-self: flex-end; background: var(--line); margin: 0 4px; }
+.an-date-field { display: flex; flex-direction: row; align-items: center; gap: 7px; }
+.an-date-field label { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.an-date-wrap { position: relative; }
+.an-date-txt {
+	width: 112px;
+	padding: 5px 9px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: var(--card);
+	color: var(--ink);
+	font-size: 12px;
+	font-family: inherit;
+	cursor: pointer;
+}
+.an-date-txt:hover { border-color: var(--peach-300); }
+.an-date-real { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.01; cursor: pointer; border: none; background: transparent; z-index: 2; box-sizing: border-box; }
+.an-apply-btn {
+	align-self: flex-end;
+	padding: 6px 16px;
+	border-radius: 8px;
+	border: 1px solid var(--peach-400);
+	background: var(--peach-500);
+	color: #fff;
+	font-size: 12px;
+	font-weight: 700;
+	cursor: pointer;
+	transition: filter 0.15s;
+}
+.an-apply-btn:hover { filter: brightness(1.05); }
+.an-clear-btn {
+	align-self: flex-end;
+	padding: 6px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--line);
+	background: var(--card);
+	color: var(--ink-2);
+	font-size: 12px;
+	font-weight: 600;
+	text-decoration: none;
+}
+.an-clear-btn:hover { background: var(--peach-100); color: var(--ink); }
+
 @media (max-width: 1100px) {
 	.summary-strip { grid-template-columns: repeat(2, 1fr); }
 	.an-row { grid-template-columns: 1fr; }
@@ -65,7 +112,8 @@
 
 @media print {
 	/* hide sidebar + topbar + export controls */
-	.sidebar, .topbar-inner, .an-export-btn, .seg { display: none !important; }
+	.sidebar, .topbar-inner, .an-export-btn, .seg,
+	.an-tb-div, .an-date-field, .an-apply-btn, .an-clear-btn { display: none !important; }
 
 	/* collapse shell grid — sidebar is gone so content takes full width */
 	.shell { display: block !important; }

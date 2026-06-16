@@ -1,0 +1,90 @@
+erDiagram
+    EMAIL_IDENTITY ||--o{ API_LOGS           : "email = account_email"
+    EMAIL_IDENTITY ||--o{ IP_IDENTITY        : "1 person : N ip"
+    IP_IDENTITY    ||--o{ API_LOGS           : "ip = client_ip (L3)"
+    IP_IDENTITY    |o..o| IP_IDENTITY_BACKUP : "frozen snapshot"
+    IP_IDENTITY_BACKUP ||--o{ API_LOGS       : "ip = client_ip"
+
+    EMAIL_IDENTITY {
+        TEXT email PK "canonical, VPN-safe"
+        TEXT name
+        TEXT account_id
+        TEXT uuid
+        TEXT org_id
+        TEXT anon_id
+        TEXT ips "comma-list of all IPs"
+        TEXT client_types "comma-list"
+        TEXT os_type
+        TEXT os_version
+        TEXT host_arch
+        TEXT app_version
+        TEXT terminal
+        INTEGER first_seen
+        INTEGER updated_ms
+    }
+    IP_IDENTITY {
+        TEXT ip PK "L3 routing key"
+        TEXT email FK
+        TEXT name
+        TEXT uuid
+        TEXT account_id
+        TEXT org_id
+        TEXT anon_id
+        TEXT os_type
+        TEXT os_version
+        TEXT host_arch
+        TEXT app_version
+        TEXT terminal
+        TEXT client_types
+        INTEGER first_seen
+        INTEGER updated_ms
+    }
+    IP_IDENTITY_BACKUP {
+        TEXT ip PK "snapshot at migration 0009"
+        TEXT email
+        TEXT name
+        TEXT uuid
+        TEXT account_id
+        TEXT org_id
+        TEXT anon_id
+        INTEGER updated_ms
+    }
+    API_LOGS {
+        TEXT id PK "one row per prompt"
+        INTEGER ts
+        TEXT client
+        TEXT account_email FK
+        TEXT client_ip FK
+        TEXT machine_name
+        TEXT model
+        TEXT prompt
+        INTEGER prompt_chars
+        INTEGER total_tokens
+        REAL cost_usd
+        TEXT anon_id
+        TEXT device_id
+        TEXT mac_address
+        TEXT os_type
+        TEXT app_version
+        TEXT terminal
+    }
+    SESSIONS {
+        TEXT id PK "admin login, separate island"
+        TEXT sub "Logto user id"
+        TEXT email "admin email (not monitored user)"
+        INTEGER created_at
+        INTEGER expires_at
+        TEXT ip
+        TEXT user_agent
+        TEXT id_token
+    }
+    OAUTH_STATE {
+        TEXT state PK "PKCE during OAuth"
+        TEXT code_verifier
+        TEXT next_path
+        INTEGER expires_at
+    }
+    APP_SETTINGS {
+        TEXT key PK "key/value config"
+        TEXT value
+    }

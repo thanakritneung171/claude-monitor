@@ -167,6 +167,8 @@ dist
 
 # proxy secrets
 proxy/config.py
+proxy/uuid_email_map.json
+proxy/identity_cache.json
 __pycache__/
 *.pyc
 

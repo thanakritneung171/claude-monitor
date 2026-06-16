@@ -107,7 +107,9 @@ flowchart TD
    | `ClaudeAPIMonitor` | `api.anthropic.com/v1/messages` (รวม `?beta=true`) | `claude-code-cli` / `claude-code-vscode` / `claude-desktop-code` / `claude-desktop-cowork` / `api` |
    | `ClaudeDesktopMonitor` | `claude.ai/.../chat_conversations/.../completion` | `claude-desktop` |
    | `ClaudeBridgeMonitor` | `bridge.claudeusercontent.com` WebSocket | `claude-code-cli` / `claude-code-vscode` / `browser-extension` |
-   | `ClaudeAccountSniffer` | `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` | — (cache email) |
+   | `ClaudeAccountSniffer` | `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` | — (map session cookie → email สำหรับ claude.ai chat) |
+
+   > **🔑 Identity = email ไม่ใช่ IP (อัปเดต 2026-06):** `/v1/messages` ดึง email จาก **Bearer JWT** ของ request เอง · `claude.ai` chat ดึงจาก **session cookie → email** map · `client_ip` เป็น audit เท่านั้น · ดีไซน์ IP เดิม (เลิกใช้) ที่ [IDENTITY-LAYERS-PLAN.md](IDENTITY-LAYERS-PLAN.md)
 
 7. **Parse + classify + price**
    - Parse SSE stream → ข้อความ response + token counts (input/output/cache_create/cache_read)

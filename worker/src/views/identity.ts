@@ -2,7 +2,7 @@ import type { SessionUser } from '../types';
 import type { IdentityListRow } from '../db/queries';
 import { esc, num } from '../lib/format';
 import { renderLayout } from './layout';
-import { relativeTimeTh, accountStatus, IP_PREFIX } from '../lib/account';
+import { relativeTimeTh, accountStatus } from '../lib/account';
 
 export interface IdentityRenderInput {
 	rows: IdentityListRow[];
@@ -28,17 +28,26 @@ const pageCss = `
 .idn-dot.idle { background:#E0A340; }
 .idn-dot.cold { background:var(--ink-3); }
 .idn-empty { text-align:center; padding:48px 16px; color:var(--ink-3); }
+.idn-acct-id { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:12px; color:var(--ink-2); }
+.idn-anon-id { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:11px; color:var(--ink-3); word-break:break-all; }
 `;
 
 function row(r: IdentityListRow): string {
-	const ipUrl    = `/account?identity=${encodeURIComponent(IP_PREFIX + r.ip)}`;
 	const emailUrl = `/account?identity=${encodeURIComponent(r.email)}`;
 	const stat = accountStatus(r.updated_ms);
 	const name = r.name ? esc(r.name) : '<span class="idn-muted">—</span>';
+	const acctId = r.account_id
+		? `<span class="idn-acct-id" title="${esc(r.account_id)}">${esc(r.account_id)}</span>`
+		: '<span class="idn-muted">—</span>';
+	const anonId = r.anon_id
+		? `<span class="idn-anon-id" title="${esc(r.anon_id)}">${esc(r.anon_id.length > 36 ? r.anon_id.slice(0, 36) + '…' : r.anon_id)}</span>`
+		: '<span class="idn-muted">—</span>';
 	return `<tr>
-		<td><a class="idn-ip" href="${ipUrl}">${esc(r.ip)}</a></td>
+		<td><span class="idn-ip">${esc(r.ip)}</span></td>
 		<td><a class="idn-email" href="${emailUrl}">${esc(r.email)}</a></td>
 		<td>${name}</td>
+		<td>${acctId}</td>
+		<td>${anonId}</td>
 		<td class="mono">${num(r.calls)}</td>
 		<td class="idn-when"><span class="idn-dot ${stat}"></span>${esc(relativeTimeTh(r.updated_ms))}</td>
 	</tr>`;
@@ -52,7 +61,7 @@ export function renderIdentity(input: IdentityRenderInput): string {
 		? `<div class="idn-empty">ยังไม่มี mapping IP → email — รอ proxy จับ email จาก traffic ก่อน</div>`
 		: `<table class="idn-table">
 			<thead><tr>
-				<th>IP</th><th>Email</th><th>Name</th><th>Calls</th><th>อัปเดตล่าสุด</th>
+				<th>IP</th><th>Email</th><th>Name</th><th>Account ID</th><th>Anon ID</th><th>Calls</th><th>อัปเดตล่าสุด</th>
 			</tr></thead>
 			<tbody>${rows.map(row).join('')}</tbody>
 		</table>`;
@@ -68,7 +77,7 @@ export function renderIdentity(input: IdentityRenderInput): string {
 		activeNav: 'identity',
 		user: input.user,
 		pageTitle: 'IP Identity',
-		pageSubtitle: 'การผูก IP ↔ email ปัจจุบัน (Layer 3) — ใช้เติม email ให้ log ที่ระบุตัวตนไม่ได้',
+		pageSubtitle: 'Snapshot ประวัติการผูก IP ↔ email (frozen — ไม่อัปเดตแล้ว) · identity จริงย้ายไปหน้า New Identity ที่ผูกด้วย email',
 		content,
 		pageCss,
 		title: 'IP Identity — SDB AI Insight',

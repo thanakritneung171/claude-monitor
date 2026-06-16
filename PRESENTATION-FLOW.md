@@ -86,9 +86,8 @@
                 ▼
 [4] Worker /log:
       • ตรวจ X-Api-Key
-      • ถ้า email ว่าง → lookup จาก ip_identity (เติมให้)
-      • INSERT ลง api_logs
-      • ถ้ามี email → upsert ip_identity (จำไว้ใช้ครั้งหน้า)
+      • INSERT ลง api_logs (client_ip เก็บเป็น audit เท่านั้น)
+      • ถ้ามี email → upsert email_identity (canonical record ต่อคน)
         │
         ▼
 [5] ข้อมูลขึ้น Dashboard ทันที (query สดจาก D1)
@@ -134,22 +133,24 @@
 
 ---
 
-## 📌 Slide 6 — วิธีตรวจจับตัวตน: Identity 4 Layers
+## 📌 Slide 6 — วิธีระบุตัวตน: Identity = email (VPN-safe)
 
-> ปัญหา: บน proxy กลาง บาง log มี `account_email` ว่าง (25–64%) เพราะ subscription user ไม่ส่ง email ใน traffic ตรงๆ
+> เดิมใช้ **IP** เป็นแกน identity (4 ชั้น) แต่ **VPN เปลี่ยน IP ตลอด → attribute ผิดคน**
+> จึงเปลี่ยนมาใช้ **email** ที่ดึงจาก token ที่ติดมากับ request เอง (ไม่พึ่ง IP)
 
-แก้ด้วยการเก็บ identity กระจาย 4 ชั้น — แต่ละชั้น **รอดแยกกันได้** (proxy/worker restart ก็ไม่หาย):
+ทุก prompt พก token ระบุตัวตนของตัวเองมาอยู่แล้ว:
 
-| Layer | เก็บที่ไหน | บทบาท |
+| Endpoint | Clients | ที่มาของ email |
 |---|---|---|
-| **L1** `_ACCOUNT_BY_IP` | Proxy (in-memory) | hot read path — map IP → email ตอน log |
-| **L2** `account_slots.json` | Proxy (ไฟล์) | mirror ของ L1 — รอด proxy restart |
-| **L3** `ip_identity` table | Worker D1 | source of truth ระยะยาว — รอดทุกอย่าง |
-| **L4** `api_logs.client_ip` | Worker D1 | audit ทุก row — fallback แสดงผล |
+| `api.anthropic.com/v1/messages` | CLI / VSCode / Desktop-Code / **Cowork** | **Bearer JWT** ของ request เอง |
+| `claude.ai/.../completion` | Desktop / web **chat** | **session cookie → email** (จาก `ClaudeAccountSniffer`) |
 
-**3 แหล่งที่ได้ email มา:** HTTP sniffer (claude.ai), JWT decode (Bearer token), Bridge connect handshake (WebSocket)
+- device/account info (OS/arch/`account_id`/`org_id`) cache **keyed ด้วย email** (จาก metrics endpoint) — VPN-safe
+- **`email_identity`** (keyed ด้วย email) = canonical identity record (1 คน 1 แถว รวมทุก device/network)
+- `client_ip` ยังเก็บใน `api_logs` แต่ **เป็น audit เท่านั้น — ไม่ใช้ระบุตัวตน**
+- จับ email ไม่ได้ → log โดน email filter drop (ไม่เดาจาก IP อีกต่อไป)
 
-**ถ้าหา email ไม่ได้เลย** → แสดงเป็น `ip:10.10.84.42` แทน (ยัง audit ได้ว่ามาจากเครื่องไหน)
+> ดีไซน์เดิม IP 4 ชั้น (เลิกใช้แล้ว) ดูที่ [IDENTITY-LAYERS-PLAN.md](IDENTITY-LAYERS-PLAN.md)
 
 ---
 
@@ -198,8 +199,9 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 
 | Table | เก็บอะไร |
 |---|---|
-| `api_logs` | log ทุก call — ts, client, account_email, client_ip, model, prompt, tokens, **cost_usd** |
-| `ip_identity` | map IP → email (Layer 3) — เติม email ให้ log ที่ระบุตัวไม่ได้ |
+| `api_logs` | log ทุก call — ts, client, account_email, client_ip (audit), model, prompt, tokens, **cost_usd** |
+| `email_identity` | **canonical identity ต่อคน** (keyed ด้วย email) — name, account_id, org_id, device info, client types |
+| `ip_identity_backup` | snapshot แช่แข็งของ IP↔email เดิม (หน้า `/identity`) — ไม่อัปเดตแล้ว |
 | `sessions` | session ผู้ใช้ที่ login (sub, email, expires_at, id_token) |
 | `oauth_state` | state + PKCE verifier ระหว่าง OAuth flow |
 | `app_settings` | ค่า config (ingest_key, notify flags) — key/value |
@@ -244,7 +246,7 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 
 ## 📌 Slide 12 — หน้า Account Detail (`/account?identity=`)
 
-เจาะลึกการใช้งานของ account เดียว (รับทั้ง email และ `ip:...`)
+เจาะลึกการใช้งานของ account เดียว (ระบุด้วย **email**)
 
 **ส่วนประกอบ:**
 - **Period filter** (24h/7d/30d/90d/all) + filter ตาม client/model
@@ -308,10 +310,11 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 
 ## 📌 Slide 16 — หน้า Identity (`/identity`)
 
-ดูตาราง map **IP ↔ email** ปัจจุบัน (Layer 3) — ใช้เติม email ให้ log ที่ระบุตัวตนไม่ได้
+ตาราง **snapshot ประวัติ** IP ↔ email (frozen — ไม่อัปเดตแล้ว) จากดีไซน์เดิม ·
+identity จริงปัจจุบันย้ายไปหน้า **New Identity** (`/new-identity`) ที่ผูกด้วย **email**
 
 **ส่วนประกอบ:**
-- ตาราง: IP, email, name, uuid, อัปเดตล่าสุด, จำนวน calls ที่ผูกกับ IP นั้น
+- ตาราง: IP, email, name, uuid, อัปเดตล่าสุด, จำนวน calls ที่ผูกกับ IP นั้น (ข้อมูล ณ วัน snapshot)
 - เรียงตามเวลาอัปเดตล่าสุด
 
 ---
@@ -390,7 +393,7 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 
 ✅ **ดักทุกช่องทาง** — Desktop, web, Cowork, Code tab, CLI, VSCode, API ในที่เดียว
 ✅ **คิดเงินแม่นยำ** — แยก input/output/cache ตามราคาจริงของแต่ละ model
-✅ **ระบุตัวตนทน fail** — 4-layer identity รอด proxy/worker restart
+✅ **ระบุตัวตนด้วย email (VPN-safe)** — ดึงจาก JWT / session cookie ของ request เอง ไม่พึ่ง IP
 ✅ **ไม่ block ผู้ใช้** — log แบบ fire-and-forget + backup JSONL ในเครื่อง
 ✅ **Dashboard ครบ** — ภาพรวม, รายคน, trend, real-time monitoring, export
 

@@ -133,7 +133,7 @@ function renderLogRows(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap
 		return `<tr data-full="${fullPrompt}">
 			<td><span class="time">${esc(time)}<span class="date">${esc(date)}</span></span></td>
 			<td class="td-center">${clientBadge(r.client, cColorMap)}</td>
-			<td>${accountBadge(r.account_email, r.client_ip)}</td>
+			<td>${accountBadge(r.account_email)}</td>
 			<td class="td-center">${modelBadge(r.model, mColorMap)}</td>
 			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div>${r.prompt.length > 80 ? '<span class="more">เปิดดูเต็ม →</span>' : ''}</td>
 			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
@@ -163,7 +163,7 @@ function renderLogCards(rows: ApiLog[], mColorMap: Map<string, string>, cColorMa
 				${clientBadge(r.client, cColorMap)}
 			</div>
 			<div class="meta-grid">
-				<div>Account<strong style="font-size:11px;">${esc(displayAccount(r.account_email, r.client_ip))}</strong></div>
+				<div>Account<strong style="font-size:11px;">${esc(displayAccount(r.account_email))}</strong></div>
 				<div>Total tokens<strong>${num(r.total_tokens)}</strong></div>
 				<div>Input / Output<strong>${num(r.input_tokens)} / ${num(r.output_tokens)}</strong></div>
 				<div>Cache W / R<strong>${num(r.cache_creation_tokens)} / ${num(r.cache_read_tokens)}</strong></div>

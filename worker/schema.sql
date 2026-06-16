@@ -13,7 +13,15 @@ CREATE TABLE IF NOT EXISTS api_logs (
   cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
   cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
   total_tokens          INTEGER NOT NULL DEFAULT 0,
-  cost_usd              REAL    NOT NULL DEFAULT 0
+  cost_usd              REAL    NOT NULL DEFAULT 0,
+  client_ip             TEXT    NOT NULL DEFAULT '',
+  app_version           TEXT    NOT NULL DEFAULT '',
+  os_type               TEXT    NOT NULL DEFAULT '',
+  os_version            TEXT    NOT NULL DEFAULT '',
+  host_arch             TEXT    NOT NULL DEFAULT '',
+  terminal              TEXT    NOT NULL DEFAULT '',
+  device_id             TEXT    NOT NULL DEFAULT '',
+  mac_address           TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_logs_ts      ON api_logs(ts DESC);

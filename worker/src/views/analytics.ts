@@ -7,9 +7,11 @@ import { renderLayout } from './layout';
 
 export interface AnalyticsRenderInput {
 	user?: SessionUser;
-	period: '24h' | '7d' | '30d' | '90d';
+	period: '24h' | '7d' | '30d' | '90d' | 'custom';
 	fromMs: number;
 	toMs: number;
+	dateFrom?: string;
+	dateTo?: string;
 	timeseries: BucketPoint[];
 	heatmap: HeatmapCell[];
 	perModelSeries: { model: string; points: BucketPoint[]; totalCost: number }[];
@@ -182,6 +184,10 @@ function sparkline(points: BucketPoint[], color: string): string {
 
 export function renderAnalytics(d: AnalyticsRenderInput): string {
 	const periodLink = (p: '24h' | '7d' | '30d' | '90d') => `<a href="?period=${p}"${d.period === p ? ' class="on"' : ''}>${p}</a>`;
+	const toDisplayDate = (iso: string) => {
+		const [y, m, dd] = iso.split('-');
+		return dd && m && y ? `${dd}/${m}/${y}` : '';
+	};
 
 	const allModelLabels = d.perModelSeries.map(m => modelLabel(m.model));
 	const mColorMap = buildColorMap(allModelLabels, MODEL_PASTEL);
@@ -204,11 +210,28 @@ export function renderAnalytics(d: AnalyticsRenderInput): string {
 		</section>`;
 
 	const toolbar = `
-		<div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+		<form method="get" action="/analytics" class="an-toolbar" id="anFilterForm">
 			<span style="font-size:12px;color:var(--ink-2);font-weight:600;">Period</span>
 			<div class="seg">${periodLink('24h')}${periodLink('7d')}${periodLink('30d')}${periodLink('90d')}</div>
-			<button class="an-export-btn" onclick="window.print()">Export PDF</button>
-		</div>`;
+			<span class="an-tb-div"></span>
+			<div class="an-date-field">
+				<label>Date From</label>
+				<div class="an-date-wrap">
+					<input type="text" class="an-date-txt" id="anDateFromTxt" value="${esc(toDisplayDate(d.dateFrom ?? ''))}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+					<input type="date" class="an-date-real" id="anDateFromReal" name="date_from" value="${esc(d.dateFrom ?? '')}">
+				</div>
+			</div>
+			<div class="an-date-field">
+				<label>Date To</label>
+				<div class="an-date-wrap">
+					<input type="text" class="an-date-txt" id="anDateToTxt" value="${esc(toDisplayDate(d.dateTo ?? ''))}" placeholder="dd/mm/yyyy" readonly tabindex="-1">
+					<input type="date" class="an-date-real" id="anDateToReal" name="date_to" value="${esc(d.dateTo ?? '')}">
+				</div>
+			</div>
+			<button type="submit" class="an-apply-btn">Apply</button>
+			${d.period === 'custom' ? `<a href="/analytics?period=30d" class="an-clear-btn">ล้าง</a>` : ''}
+			<button type="button" class="an-export-btn" onclick="window.print()">Export PDF</button>
+		</form>`;
 
 	const content = `
 		${toolbar}
@@ -236,7 +259,15 @@ export function renderAnalytics(d: AnalyticsRenderInput): string {
 		<div class="card" style="margin-top:14px;">
 			<div class="card-head"><h2>Activity heatmap</h2><span class="count">day-of-week × hour</span></div>
 			${heatmapHtml(d.heatmap)}
-		</div>`;
+		</div>
+		<script>
+		[['anDateFromReal','anDateFromTxt'],['anDateToReal','anDateToTxt']].forEach(function(pair){
+			var r=document.getElementById(pair[0]),t=document.getElementById(pair[1]);
+			if(!r||!t)return;
+			r.addEventListener('click',function(){try{r.showPicker();}catch(e){}});
+			r.addEventListener('change',function(){if(!r.value){t.value='';return;}var p=r.value.split('-');t.value=p[2]+'/'+p[1]+'/'+p[0];});
+		});
+		</script>`;
 
 	return renderLayout({
 		activeNav: 'analytics',

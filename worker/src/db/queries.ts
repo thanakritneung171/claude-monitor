@@ -1,6 +1,5 @@
 import type { Env, ApiLog, Filters, Totals, ByModel, ByClient, ByAccount } from '../types';
-import { buildWhere, IDENTITY_EXPR } from './filters';
-import { IP_PREFIX } from '../lib/account';
+import { buildWhere } from './filters';
 
 export interface DashboardData {
 	rows: ApiLog[];
@@ -33,10 +32,10 @@ export async function fetchDashboardData(env: Env, filters: Filters): Promise<Da
 			.bind(...params).all<ByModel>(),
 		env.DB.prepare(`SELECT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
 			.bind(...params).all<ByClient>(),
-		env.DB.prepare(`SELECT ${IDENTITY_EXPR} as account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
+		env.DB.prepare(`SELECT account_email as account_email, COUNT(*) as n, SUM(cost_usd) as cost FROM api_logs ${clause} GROUP BY 1 ORDER BY cost DESC`)
 			.bind(...params).all<ByAccount>(),
 		env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
-		env.DB.prepare(`SELECT DISTINCT ${IDENTITY_EXPR} as account_email FROM api_logs WHERE NOT (account_email = '' AND client_ip = '') ORDER BY 1`).all<{ account_email: string }>(),
+		env.DB.prepare(`SELECT DISTINCT account_email as account_email FROM api_logs WHERE account_email != '' ORDER BY 1`).all<{ account_email: string }>(),
 		env.DB.prepare(`SELECT DISTINCT CASE WHEN client IN ('claude-code-cli','claude-desktop') THEN 'claude-code-cli, claude-desktop' ELSE client END as client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
 	]);
 
@@ -68,6 +67,39 @@ export async function fetchExportRows(env: Env, filters: Filters): Promise<ApiLo
 	return rows.results;
 }
 
+// ─── Logs page (full-field table) ─────────────────────────────────────────────
+export interface LogsPageData {
+	rows: ApiLog[];
+	totalCount: number;
+	allModels: string[];
+	allAccounts: string[];
+	allClients: string[];
+}
+
+export async function fetchLogsData(env: Env, filters: Filters): Promise<LogsPageData> {
+	const { clause, params } = buildWhere(filters);
+	const offset = filters.perPage === null ? 0 : (filters.page - 1) * filters.perPage;
+	const limitClause = filters.perPage === null ? '' : `LIMIT ${filters.perPage} OFFSET ${offset}`;
+
+	const [rows, countRow, allModelsRes, allAccountsRes, allClientsRes] = await Promise.all([
+		env.DB.prepare(`SELECT * FROM api_logs ${clause} ORDER BY ts DESC ${limitClause}`)
+			.bind(...params).all<ApiLog>(),
+		env.DB.prepare(`SELECT COUNT(*) as n FROM api_logs ${clause}`)
+			.bind(...params).first<{ n: number }>(),
+		env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
+		env.DB.prepare(`SELECT DISTINCT account_email as account_email FROM api_logs WHERE account_email != '' ORDER BY 1`).all<{ account_email: string }>(),
+		env.DB.prepare(`SELECT DISTINCT client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
+	]);
+
+	return {
+		rows: rows.results,
+		totalCount: countRow?.n ?? 0,
+		allModels: allModelsRes.results.map(r => r.model),
+		allAccounts: allAccountsRes.results.map(r => r.account_email),
+		allClients: allClientsRes.results.map(r => r.client),
+	};
+}
+
 // ─── Accounts list ────────────────────────────────────────────────────────────
 export interface AccountAggRow {
 	account_email: string;
@@ -94,26 +126,25 @@ export interface AccountsListData {
 
 export async function fetchAccountsList(env: Env, fromMs: number, toMs: number): Promise<AccountsListData> {
 	const activeSince = Date.now() - 24 * 60 * 60 * 1000;
-	// "Identity" = email when present, else 'ip:<client_ip>'. Rows with NEITHER
-	// (both empty) are filtered — they can't be grouped or linked anywhere.
-	const haveIdent = `NOT (account_email = '' AND client_ip = '')`;
+	// Identity = account email. Rows with empty email have no identity → filtered out.
+	const haveIdent = `account_email != ''`;
 	const [aggs, modelCounts, summary, active] = await Promise.all([
 		env.DB.prepare(
-			`SELECT ${IDENTITY_EXPR} as account_email, COUNT(*) as calls, SUM(total_tokens) as tokens, SUM(cost_usd) as cost, MAX(ts) as last_seen
+			`SELECT account_email as account_email, COUNT(*) as calls, SUM(total_tokens) as tokens, SUM(cost_usd) as cost, MAX(ts) as last_seen
 			 FROM api_logs WHERE ${haveIdent} AND ts >= ? AND ts <= ?
 			 GROUP BY 1 ORDER BY cost DESC`
 		).bind(fromMs, toMs).all<AccountAggRow>(),
 		env.DB.prepare(
-			`SELECT ${IDENTITY_EXPR} as account_email, model, COUNT(*) as n
+			`SELECT account_email as account_email, model, COUNT(*) as n
 			 FROM api_logs WHERE ${haveIdent} AND model != '' AND ts >= ? AND ts <= ?
 			 GROUP BY 1, model`
 		).bind(fromMs, toMs).all<{ account_email: string; model: string; n: number }>(),
 		env.DB.prepare(
-			`SELECT SUM(cost_usd) as totalSpend, COUNT(*) as totalCalls, COUNT(DISTINCT ${IDENTITY_EXPR}) as totalAccounts
+			`SELECT SUM(cost_usd) as totalSpend, COUNT(*) as totalCalls, COUNT(DISTINCT account_email) as totalAccounts
 			 FROM api_logs WHERE ${haveIdent} AND ts >= ? AND ts <= ?`
 		).bind(fromMs, toMs).first<{ totalSpend: number; totalCalls: number; totalAccounts: number }>(),
 		env.DB.prepare(
-			`SELECT COUNT(DISTINCT ${IDENTITY_EXPR}) as n FROM api_logs WHERE ${haveIdent} AND ts >= ?`
+			`SELECT COUNT(DISTINCT account_email) as n FROM api_logs WHERE ${haveIdent} AND ts >= ?`
 		).bind(activeSince).first<{ n: number }>(),
 	]);
 
@@ -176,13 +207,9 @@ export async function fetchAccountDetail(
 	clientFilter: string,
 	modelFilter: string,
 ): Promise<AccountDetailData> {
-	// identity is either an email or 'ip:<client_ip>'. The IP variant restricts to
-	// rows with empty email (otherwise we'd merge unrelated callers from the same IP).
-	const isIp = identity.startsWith(IP_PREFIX);
-	const ipValue = isIp ? identity.slice(IP_PREFIX.length) : '';
-
-	const identCond  = isIp ? "(account_email = '' AND client_ip = ?)" : 'account_email = ?';
-	const identParam: string = isIp ? ipValue : identity;
+	// identity is an account email (identity = email only now).
+	const identCond  = 'account_email = ?';
+	const identParam: string = identity;
 
 	const conds = [identCond, 'ts >= ?', 'ts <= ?'];
 	const params: (string | number)[] = [identParam, fromMs, toMs];
@@ -305,8 +332,9 @@ export async function insertLog(env: Env, b: Partial<ApiLog>): Promise<void> {
 		`INSERT OR IGNORE INTO api_logs
 		   (id, ts, client, account_email, client_ip, machine_name, model, prompt, prompt_chars, response_chars,
 		    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-		    total_tokens, cost_usd)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+		    total_tokens, cost_usd,
+		    app_version, os_type, os_version, host_arch, terminal, device_id, mac_address, anon_id)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 	).bind(
 		b.id ?? crypto.randomUUID(),
 		b.ts ?? Date.now(),
@@ -324,48 +352,125 @@ export async function insertLog(env: Env, b: Partial<ApiLog>): Promise<void> {
 		b.cache_read_tokens     ?? 0,
 		b.total_tokens          ?? 0,
 		b.cost_usd              ?? 0,
+		b.app_version ?? '',
+		b.os_type     ?? '',
+		b.os_version  ?? '',
+		b.host_arch   ?? '',
+		b.terminal    ?? '',
+		b.device_id   ?? '',
+		b.mac_address ?? '',
+		b.anon_id     ?? '',
 	).run();
 }
 
-// ─── ip_identity (L3) — IP → email mapping ────────────────────────────────────
-export async function lookupIdentityByIp(env: Env, ip: string): Promise<{ email: string; name: string; uuid: string } | null> {
-	if (!ip) return null;
-	const row = await env.DB.prepare(
-		`SELECT email, name, uuid FROM ip_identity WHERE ip = ?`
-	).bind(ip).first<{ email: string; name: string; uuid: string }>();
-	return row ?? null;
-}
-
-export async function upsertIdentity(env: Env, ip: string, email: string, name = '', uuid = ''): Promise<void> {
-	if (!ip || !email) return;
-	await env.DB.prepare(
-		`INSERT INTO ip_identity (ip, email, name, uuid, updated_ms)
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(ip) DO UPDATE SET
-		   email      = excluded.email,
-		   name       = CASE WHEN excluded.name != '' THEN excluded.name ELSE ip_identity.name END,
-		   uuid       = CASE WHEN excluded.uuid != '' THEN excluded.uuid ELSE ip_identity.uuid END,
-		   updated_ms = excluded.updated_ms`
-	).bind(ip, email, name, uuid, Date.now()).run();
-}
-
+// ─── ip_identity_backup (frozen snapshot) — read-only, powers the /identity page ──
 export interface IdentityListRow {
 	ip: string;
 	email: string;
 	name: string;
 	uuid: string;
+	account_id: string;
+	org_id: string;
+	anon_id: string;
 	updated_ms: number;
 	calls: number;
 }
 
-export async function fetchIdentityList(env: Env): Promise<IdentityListRow[]> {
+export async function fetchIdentityBackup(env: Env): Promise<IdentityListRow[]> {
 	const res = await env.DB.prepare(
-		`SELECT i.ip, i.email, i.name, i.uuid, i.updated_ms,
+		`SELECT b.ip, b.email, b.name, b.uuid, b.account_id, b.org_id, b.anon_id, b.updated_ms,
 		        COUNT(l.id) AS calls
-		   FROM ip_identity i
-		   LEFT JOIN api_logs l ON l.client_ip = i.ip
-		  GROUP BY i.ip
-		  ORDER BY i.updated_ms DESC`
+		   FROM ip_identity_backup b
+		   LEFT JOIN api_logs l ON l.client_ip = b.ip
+		  GROUP BY b.ip
+		  ORDER BY b.updated_ms DESC`
 	).all<IdentityListRow>();
+	return res.results ?? [];
+}
+
+// ─── email_identity — canonical person record (keyed by email) ────────────────
+export interface EmailIdentityInput {
+	email: string;
+	name?: string;
+	accountId?: string;
+	uuid?: string;
+	orgId?: string;
+	anonId?: string;
+	osType?: string;
+	osVersion?: string;
+	hostArch?: string;
+	appVersion?: string;
+	terminal?: string;
+	clientType?: string;  // appended to the client_types list
+	ts?: number;          // becomes first_seen (set-once) + updated_ms
+}
+
+export async function upsertEmailIdentity(env: Env, d: EmailIdentityInput): Promise<void> {
+	if (!d.email) return;
+	const now = Date.now();
+	await env.DB.prepare(
+		`INSERT INTO email_identity
+		   (email, name, account_id, uuid, org_id, anon_id,
+		    os_type, os_version, host_arch, app_version, terminal,
+		    client_types, first_seen, updated_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(email) DO UPDATE SET
+		   name        = CASE WHEN excluded.name        != '' THEN excluded.name        ELSE email_identity.name        END,
+		   account_id  = CASE WHEN excluded.account_id  != '' THEN excluded.account_id  ELSE email_identity.account_id  END,
+		   uuid        = CASE WHEN excluded.uuid        != '' THEN excluded.uuid        ELSE email_identity.uuid        END,
+		   org_id      = CASE WHEN excluded.org_id      != '' THEN excluded.org_id      ELSE email_identity.org_id      END,
+		   anon_id     = CASE WHEN excluded.anon_id     != '' THEN excluded.anon_id     ELSE email_identity.anon_id     END,
+		   os_type     = CASE WHEN excluded.os_type     != '' THEN excluded.os_type     ELSE email_identity.os_type     END,
+		   os_version  = CASE WHEN excluded.os_version  != '' THEN excluded.os_version  ELSE email_identity.os_version  END,
+		   host_arch   = CASE WHEN excluded.host_arch   != '' THEN excluded.host_arch   ELSE email_identity.host_arch   END,
+		   app_version = CASE WHEN excluded.app_version != '' THEN excluded.app_version ELSE email_identity.app_version END,
+		   terminal    = CASE WHEN excluded.terminal    != '' THEN excluded.terminal    ELSE email_identity.terminal    END,
+		   client_types = CASE
+		     WHEN excluded.client_types = '' THEN email_identity.client_types
+		     WHEN email_identity.client_types = '' THEN excluded.client_types
+		     WHEN (',' || email_identity.client_types || ',') LIKE ('%,' || excluded.client_types || ',%') THEN email_identity.client_types
+		     ELSE email_identity.client_types || ',' || excluded.client_types
+		   END,
+		   first_seen  = CASE WHEN email_identity.first_seen = 0 THEN excluded.first_seen ELSE email_identity.first_seen END,
+		   updated_ms  = excluded.updated_ms`
+	).bind(
+		d.email,
+		d.name ?? '', d.accountId ?? '', d.uuid ?? '', d.orgId ?? '', d.anonId ?? '',
+		d.osType ?? '', d.osVersion ?? '', d.hostArch ?? '', d.appVersion ?? '', d.terminal ?? '',
+		d.clientType ?? '',
+		d.ts || now, now,
+	).run();
+}
+
+export interface EmailIdentityRow {
+	email: string;
+	name: string;
+	account_id: string;
+	uuid: string;
+	org_id: string;
+	anon_id: string;
+	os_type: string;
+	os_version: string;
+	host_arch: string;
+	app_version: string;
+	terminal: string;
+	ips: string;
+	client_types: string;
+	first_seen: number;
+	updated_ms: number;
+	calls: number;
+}
+
+export async function fetchEmailIdentityList(env: Env): Promise<EmailIdentityRow[]> {
+	const res = await env.DB.prepare(
+		`SELECT e.email, e.name, e.account_id, e.uuid, e.org_id, e.anon_id,
+		        e.os_type, e.os_version, e.host_arch, e.app_version, e.terminal,
+		        e.ips, e.client_types, e.first_seen, e.updated_ms,
+		        COUNT(l.id) AS calls
+		   FROM email_identity e
+		   LEFT JOIN api_logs l ON l.account_email = e.email
+		  GROUP BY e.email
+		  ORDER BY e.updated_ms DESC`
+	).all<EmailIdentityRow>();
 	return res.results ?? [];
 }

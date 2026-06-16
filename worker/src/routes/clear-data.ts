@@ -1,8 +1,6 @@
 import type { Env, SessionUser } from '../types';
 import { dateToMs, todayBkk } from '../lib/date';
 import { renderClearData } from '../views/clear-data';
-import { isIpIdentity, stripIpPrefix } from '../lib/account';
-import { IDENTITY_EXPR } from '../db/filters';
 
 const htmlResponse = (body: string) =>
 	new Response(body, { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
@@ -13,15 +11,19 @@ interface DistinctOptions {
 	models: string[];
 	totalLogs: number;
 	totalSessions: number;
+	totalEmailIdentity: number;
+	totalIpBackup: number;
 }
 
 async function loadOptions(env: Env): Promise<DistinctOptions> {
-	const [clientsRes, accountsRes, modelsRes, logCountRow, sessCountRow] = await Promise.all([
+	const [clientsRes, accountsRes, modelsRes, logCountRow, sessCountRow, emailIdRow, ipBackupRow] = await Promise.all([
 		env.DB.prepare(`SELECT DISTINCT client FROM api_logs WHERE client != '' ORDER BY client`).all<{ client: string }>(),
-		env.DB.prepare(`SELECT DISTINCT ${IDENTITY_EXPR} as account_email FROM api_logs WHERE NOT (account_email = '' AND client_ip = '') ORDER BY 1`).all<{ account_email: string }>(),
+		env.DB.prepare(`SELECT DISTINCT account_email FROM api_logs WHERE account_email != '' ORDER BY 1`).all<{ account_email: string }>(),
 		env.DB.prepare(`SELECT DISTINCT model FROM api_logs WHERE model != '' ORDER BY model`).all<{ model: string }>(),
 		env.DB.prepare(`SELECT COUNT(*) as n FROM api_logs`).first<{ n: number }>(),
 		env.DB.prepare(`SELECT COUNT(*) as n FROM sessions`).first<{ n: number }>(),
+		env.DB.prepare(`SELECT COUNT(*) as n FROM email_identity`).first<{ n: number }>(),
+		env.DB.prepare(`SELECT COUNT(*) as n FROM ip_identity_backup`).first<{ n: number }>(),
 	]);
 	return {
 		clients: clientsRes.results.map(r => r.client),
@@ -29,6 +31,8 @@ async function loadOptions(env: Env): Promise<DistinctOptions> {
 		models: modelsRes.results.map(r => r.model),
 		totalLogs: logCountRow?.n ?? 0,
 		totalSessions: sessCountRow?.n ?? 0,
+		totalEmailIdentity: emailIdRow?.n ?? 0,
+		totalIpBackup: ipBackupRow?.n ?? 0,
 	};
 }
 
@@ -42,6 +46,8 @@ export async function handleClearDataGet(url: URL, env: Env, user?: SessionUser)
 	else if (flash === 'range')   banner = { kind: 'success', message: `ลบตามช่วงวันที่เรียบร้อย (${deleted ?? '0'} แถว)` };
 	else if (flash === 'filter')  banner = { kind: 'success', message: `ลบตาม filter เรียบร้อย (${deleted ?? '0'} แถว)` };
 	else if (flash === 'sessions') banner = { kind: 'success', message: `ลบ sessions ทั้งหมดเรียบร้อย (${deleted ?? '0'} แถว) — ผู้ใช้ทั้งหมดถูก logout` };
+	else if (flash === 'email_identity') banner = { kind: 'success', message: `ลบ email_identity (New Identity) เรียบร้อย (${deleted ?? '0'} แถว) — ตารางจะ rebuild เองจาก log ใหม่` };
+	else if (flash === 'ip_backup')      banner = { kind: 'success', message: `ลบ ip_identity_backup (IP Identity snapshot) เรียบร้อย (${deleted ?? '0'} แถว)` };
 	else if (flash === 'noop')    banner = { kind: 'error',   message: 'ไม่ได้ระบุเงื่อนไข — ไม่มีอะไรถูกลบ' };
 	else if (flash === 'error')   banner = { kind: 'error',   message: 'เกิดข้อผิดพลาดระหว่างลบ' };
 
@@ -52,6 +58,8 @@ export async function handleClearDataGet(url: URL, env: Env, user?: SessionUser)
 		models: opts.models,
 		totalLogs: opts.totalLogs,
 		totalSessions: opts.totalSessions,
+		totalEmailIdentity: opts.totalEmailIdentity,
+		totalIpBackup: opts.totalIpBackup,
 		todayStr: todayBkk(),
 		banner,
 	}));
@@ -81,6 +89,16 @@ export async function handleClearDataPost(request: Request, env: Env, user?: Ses
 			return redirect(request, 'sessions', (res.meta as { changes?: number } | undefined)?.changes ?? 0);
 		}
 
+		if (action === 'email_identity') {
+			const res = await env.DB.prepare(`DELETE FROM email_identity`).run();
+			return redirect(request, 'email_identity', (res.meta as { changes?: number } | undefined)?.changes ?? 0);
+		}
+
+		if (action === 'ip_backup') {
+			const res = await env.DB.prepare(`DELETE FROM ip_identity_backup`).run();
+			return redirect(request, 'ip_backup', (res.meta as { changes?: number } | undefined)?.changes ?? 0);
+		}
+
 		if (action === 'range') {
 			const from = String(form.get('date_from') ?? '');
 			const to   = String(form.get('date_to') ?? '');
@@ -99,15 +117,7 @@ export async function handleClearDataPost(request: Request, env: Env, user?: Ses
 			const conds: string[] = [];
 			const params: string[] = [];
 			if (client)  { conds.push('client = ?');         params.push(client); }
-			if (account) {
-				if (isIpIdentity(account)) {
-					conds.push("(account_email = '' AND client_ip = ?)");
-					params.push(stripIpPrefix(account));
-				} else {
-					conds.push('account_email = ?');
-					params.push(account);
-				}
-			}
+			if (account) { conds.push('account_email = ?'); params.push(account); }
 			if (model)   { conds.push('model = ?');          params.push(model); }
 			if (conds.length === 0) return redirect(request, 'noop');
 			const res = await env.DB.prepare(`DELETE FROM api_logs WHERE ${conds.join(' AND ')}`)

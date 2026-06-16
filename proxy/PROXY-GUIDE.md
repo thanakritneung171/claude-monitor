@@ -108,7 +108,7 @@ flowchart TD
     I -->|"api.anthropic.com<br/>/v1/messages"| J[ClaudeAPIMonitor]
     I -->|"claude.ai/.../completion"| K[ClaudeDesktopMonitor]
     I -->|"bridge.claudeusercontent.com<br/>WebSocket"| L[ClaudeBridgeMonitor]
-    I -->|"/api/auth/current_account<br/>/api/account / /api/bootstrap"| M["ClaudeAccountSniffer<br/>(cache email)"]
+    I -->|"/api/auth/current_account<br/>/api/account / /api/bootstrap"| M["ClaudeAccountSniffer<br/>(session cookie → email)"]
     J --> N["parse SSE<br/>→ text + tokens"]
     K --> N
     L --> N
@@ -147,7 +147,12 @@ flowchart TD
    | `ClaudeAPIMonitor` | `api.anthropic.com/v1/messages` (รวม `?beta=true`) | `claude-code-cli` / `claude-code-vscode` / `claude-desktop-code` / `claude-desktop-cowork` / `api` |
    | `ClaudeDesktopMonitor` | `claude.ai/.../chat_conversations/.../completion` | `claude-desktop` |
    | `ClaudeBridgeMonitor` | `bridge.claudeusercontent.com` WS | `claude-code-cli` / `claude-code-vscode` / `browser-extension` |
-   | `ClaudeAccountSniffer` | `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` (whitelist) | — (เก็บ email ใน `_ACCOUNT["email"]`) |
+   | `ClaudeAccountSniffer` | `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` (whitelist) | — (map **session cookie → email** สำหรับ claude.ai chat) |
+
+   > **🔑 Identity model (อัปเดต 2026-06):** ระบุตัวตนด้วย **email ไม่ใช่ IP** (VPN-safe) — `/v1/messages`
+   > (CLI/VSCode/Desktop-Code/Cowork) ดึง email จาก **Bearer JWT** ของ request เอง; `claude.ai` chat ดึงจาก
+   > **session cookie → email** map ที่ `ClaudeAccountSniffer` เก็บไว้ · `client_ip` เก็บเป็น **audit เท่านั้น**
+   > · ดีไซน์เดิม (IP 4 ชั้น — เลิกใช้แล้ว) ที่ [../IDENTITY-LAYERS-PLAN.md](../IDENTITY-LAYERS-PLAN.md)
 
 7. **Parse + classify + price**
    - Parse SSE stream → ข้อความ response + token counts (input/output/cache_create/cache_read)
@@ -436,7 +441,8 @@ Get-NetTCPConnection -State Established |
 | Field | คำอธิบาย |
 |---|---|
 | `client` | จาก `_detect_client` + body heuristic — ดู mapping ใน section 3 step 6 |
-| `account_email` | `ClaudeAccountSniffer` ดักจาก response ของ claude.ai (`/api/auth/current_account` ฯลฯ) ถ้าไม่ได้ใช้ web session → ว่าง |
+| `account_email` | **identity หลัก (email)** — `/v1/messages` ดึงจาก Bearer JWT ของ request; `claude.ai` chat ดึงจาก session cookie (ผ่าน `ClaudeAccountSniffer`); จับไม่ได้ → ว่าง (โดน email filter drop) |
+| `client_ip` | IP ของ client — **audit เท่านั้น ไม่ใช้ระบุตัวตน** (VPN เปลี่ยน IP ได้) |
 | `prompt` | prompt user **จริง** — `_extract_prompt_*` ข้าม `<system-reminder>` blocks และ system prompt |
 | `cache_creation_tokens` / `cache_read_tokens` | Anthropic prompt caching — read ถูกกว่า write 12.5 เท่า |
 | `cost_usd` | คำนวณตาม tier (Opus / Sonnet / Haiku) — ดู pricing table ด้านล่าง |
