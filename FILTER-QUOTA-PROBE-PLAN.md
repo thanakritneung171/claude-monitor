@@ -1,5 +1,8 @@
 # Filter Quota Probe — แผน implement
 
+> ## 📋 ยังไม่ได้ implement (แผน) — สถานะ ณ 2026-06
+> ตรวจ `proxy/addon.py` แล้ว**ยังไม่มี**โค้ดกรอง "quota" probe ตามแผนนี้ เอกสารนี้เป็น **แผนที่ยังรออยู่** เก็บไว้เป็นข้อเสนอ ถ้าจะทำให้ทำตามนี้
+
 แผนกรองไม่ให้ proxy เก็บ log "quota" probe จาก Dify (และเครื่องมือ LLM gateway อื่นที่ทำคล้ายกัน)
 ที่ยิงเข้ามาเพื่อ validate API key เท่านั้น ไม่ใช่ traffic ของ user จริง
 

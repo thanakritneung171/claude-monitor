@@ -1,190 +1,86 @@
-# Worker Refactor Plan — แยกโครงสร้างไฟล์
+# Worker Structure — แผนผังโครงสร้างไฟล์ (ปัจจุบัน)
 
-แผนการแยก [src/index.ts](src/index.ts) (~946 บรรทัด) ออกเป็นไฟล์ย่อยตามความรับผิดชอบ
+`worker/src/` แตกตามความรับผิดชอบ: `index.ts` เป็น **route dispatcher** ล้วน แล้ว delegate ไป `routes/` (handler) · `db/` (SQL) · `lib/` (pure helpers) · `views/` (HTML/CSS/JS + render)
+
+> เดิมเอกสารนี้เป็น "แผน refactor" จาก index.ts ไฟล์เดียว — ตอนนี้ทำเสร็จและขยายเป็นหลาย route แล้ว
 
 ---
 
-## โครงสร้างที่เสนอ
+## โครงสร้างปัจจุบัน
 
 ```
 worker/src/
-├── index.ts                  # entry: route dispatch เท่านั้น (~40 บรรทัด)
+├── index.ts                  # route dispatch เท่านั้น — เห็น endpoint ทั้งหมดในที่เดียว
 ├── types.ts                  # ApiLog, Filters, Env
 │
-├── routes/
-│   ├── log.ts                # POST /log   (รับข้อมูลยิงเข้ามา)
-│   ├── dashboard.ts          # GET /       (query DB + render)
-│   ├── export.ts             # GET /export (download CSV)
-│   └── health.ts             # GET /health
+├── routes/                   # 1 ไฟล์ = 1 endpoint group
+│   ├── log.ts                # POST /log  (ingest + upsertEmailIdentity)
+│   ├── health.ts             # GET /health
+│   ├── auth.ts               # /login, /logout, /api/me, OAuth callback (Logto)
+│   ├── dashboard.ts          # GET /        (KPI + recent calls)
+│   ├── logs.ts               # GET /logs    (full-field table + filter + pagination)
+│   ├── analytics.ts          # GET /analytics (trend chart + Export PDF)
+│   ├── accounts.ts           # GET /accounts
+│   ├── account-detail.ts     # GET /account?identity=<email>
+│   ├── identity.ts           # GET /identity (frozen) + /new-identity (canonical)
+│   ├── insights.ts           # GET /insights
+│   ├── reports.ts            # GET /reports
+│   ├── monitoring.ts         # GET /monitoring
+│   ├── data-sources.ts       # GET /data-sources
+│   ├── export.ts             # GET /export  (CSV / XLSX)
+│   ├── settings.ts           # GET /settings + POST key-rotate / notifications
+│   └── clear-data.ts         # GET/POST /clear-data
 │
 ├── db/
-│   ├── queries.ts            # SQL ทั้งหมด (list, count, totals, byModel, byClient, …)
+│   ├── queries.ts            # SQL หลัก (list, count, totals, byModel/Client/Account/Machine)
+│   ├── queries-extra.ts      # SQL ของหน้า analytics/insights/identity ฯลฯ
 │   └── filters.ts            # buildWhere(), normalizeClient()
 │
 ├── lib/
-│   ├── format.ts             # esc, num, fmtBkk, fmtBkkParts
-│   ├── date.ts               # todayBkk, firstOfMonthBkk, firstOfYearBkk, dateToMs
-│   ├── badge.ts              # modelBadge, clientBadge, accountBadge, modelLabel
-│   └── csv.ts                # toCsv
+│   ├── auth.ts               # requireUser(), Logto OIDC helpers (ใช้ jose)
+│   ├── account.ts            # upsertEmailIdentity() + identity helpers
+│   ├── format.ts             # esc, num, json, fmtBkk*
+│   ├── date.ts               # todayBkk, firstOfMonthBkk, dateToMs ฯลฯ
+│   ├── badge.ts              # modelBadge, clientBadge, accountBadge
+│   ├── csv.ts                # toCsv()
+│   ├── xlsx.ts               # XLSX export (ใช้ fflate)
+│   └── logo.ts               # โลโก้ฝัง base64 สำหรับ PDF/print
 │
-└── views/
-    ├── dashboard.html        # โครง HTML + {{placeholder}}
-    ├── dashboard.css         # CSS ทั้งหมด (~200 บรรทัด)
-    ├── dashboard.client.js   # frontend JS: modal, period seg, trend chart, clock
-    └── dashboard.ts          # render(): โหลด 3 ไฟล์ข้างบน + แทน placeholder
+└── views/                    # *.html + *.css + *.client.js + *.ts (render)
+    ├── layout.ts             # shell ร่วม (sidebar + head)
+    ├── sidebar.html/.css/.client.js
+    ├── shared.css
+    ├── dashboard.*           # html/css/client.js/ts
+    ├── logs.ts · analytics.* · accounts.* · account-detail.*
+    ├── identity.ts · new-identity.ts
+    ├── insights.* · reports.* · monitoring.* · data-sources.*
+    ├── settings.* · clear-data.*
+    └── image/                # โลโก้ softdebut (png/webp + base64)
 ```
 
 ---
 
-## หน้าที่ของแต่ละไฟล์
+## หลักการแยกไฟล์
 
-| ไฟล์ | รับผิดชอบ | ย้ายมาจากบรรทัดเดิม |
-|---|---|---|
-| `index.ts` | route dispatch เท่านั้น | [810-946](src/index.ts#L810-L946) |
-| `types.ts` | `ApiLog`, `Filters`, `Env` | [3-35](src/index.ts#L3-L35) |
-| `routes/log.ts` | INSERT log ลง D1 | [820-853](src/index.ts#L820-L853) |
-| `routes/dashboard.ts` | parse filters → เรียก queries → เรียก view | [859-915](src/index.ts#L859-L915) |
-| `routes/export.ts` | query + `toCsv` + response headers | [918-942](src/index.ts#L918-L942) |
-| `routes/health.ts` | health check | [856](src/index.ts#L856) |
-| `db/queries.ts` | SQL ทั้งหมด คืน object พร้อมใช้ | [881-900](src/index.ts#L881-L900) |
-| `db/filters.ts` | `buildWhere()` | [140-159](src/index.ts#L140-L159) |
-| `lib/format.ts` | `esc`, `num`, `fmtBkk*` | [45-74](src/index.ts#L45-L74) |
-| `lib/date.ts` | helpers วันที่ Bangkok | [76-93](src/index.ts#L76-L93) |
-| `lib/badge.ts` | สร้าง chip HTML | [95-124](src/index.ts#L95-L124) |
-| `lib/csv.ts` | `toCsv()` | [126-138](src/index.ts#L126-L138) |
-| `views/dashboard.html` | โครงร่าง HTML | [342-727](src/index.ts#L342-L727) |
-| `views/dashboard.css` | CSS ล้วน | [351-554](src/index.ts#L351-L554) |
-| `views/dashboard.client.js` | JS ฝั่ง browser | [729-804](src/index.ts#L729-L804) |
-| `views/dashboard.ts` | สร้าง partials (rows, cards, bars, KPI) + แทน placeholder | [167-340](src/index.ts#L167-L340) |
-
----
-
-## ตัวอย่าง `dashboard.html` พร้อม placeholder
-
-```html
-<!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8">
-  <title>Claude Monitor</title>
-  <style>{{css}}</style>
-</head>
-<body>
-  ...
-  <section class="stats">
-    {{featuredCostCard}}
-    {{statCards}}
-  </section>
-  ...
-  <tbody>{{logRows}}</tbody>
-  <div class="logs-cards">{{logCards}}</div>
-  {{pagination}}
-  ...
-  <script>
-    const D_TODAY='{{today}}', D_MONTH='{{firstMonth}}', D_YEAR='{{firstYear}}';
-    const TREND_DATA={{trendData}};
-    {{clientJs}}
-  </script>
-</body>
-</html>
-```
-
-## ตัวอย่าง `views/dashboard.ts`
-
-```ts
-import html from './dashboard.html';
-import css from './dashboard.css';
-import clientJs from './dashboard.client.js';
-
-export function render(data: DashboardData): string {
-  return html
-    .replace('{{css}}', css)
-    .replace('{{clientJs}}', clientJs)
-    .replace('{{statCards}}', renderStatCards(data.totals))
-    .replace('{{logRows}}', renderLogRows(data.rows))
-    .replace('{{logCards}}', renderLogCards(data.rows))
-    .replace('{{pagination}}', renderPagination(data.filters, data.totalCount))
-    // ...
-}
-```
-
-## ตัวอย่าง `index.ts` หลัง refactor
-
-```ts
-import type { Env } from './types';
-import { handleLog } from './routes/log';
-import { handleDashboard } from './routes/dashboard';
-import { handleExport } from './routes/export';
-import { handleHealth } from './routes/health';
-import { json } from './lib/format';
-
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const { pathname } = url;
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' },
-      });
-    }
-
-    if (pathname === '/log'    && request.method === 'POST') return handleLog(request, env);
-    if (pathname === '/health')                              return handleHealth();
-    if (pathname === '/'       && request.method === 'GET')  return handleDashboard(url, env);
-    if (pathname === '/export' && request.method === 'GET')  return handleExport(url, env);
-
-    return json({ ok: false, error: 'Not Found' }, 404);
-  },
-} satisfies ExportedHandler<Env>;
-```
-
----
-
-## สิ่งที่ต้องตั้งค่าเพิ่ม
-
-ต้องบอก esbuild ให้ import `.html` / `.css` / `.client.js` เป็น text — เพิ่มใน [wrangler.jsonc](wrangler.jsonc):
+- **`index.ts` = dispatcher** — `if (pathname === '/x') return handleX(...)` เรียงตาม public → authenticated
+- **เพิ่ม route ใหม่** = สร้างไฟล์ใน `routes/` + (ถ้าต้องการ) view ใน `views/` + register 1 บรรทัดใน `index.ts`
+- **view แบบ text-import** — `.html`/`.css`/`.client.js` ถูก import เป็น string ผ่าน `rules` ใน `wrangler.jsonc`:
 
 ```jsonc
-{
-  "rules": [
-    { "type": "Text", "globs": ["**/*.html", "**/*.css", "**/*.client.js"] }
-  ]
-}
+"rules": [ { "type": "Text", "globs": ["**/*.html", "**/*.css", "**/*.client.js"], "fallthrough": true } ]
 ```
 
-และเพิ่ม module declaration ใน `src/types.d.ts` หรือไฟล์ `.d.ts` ใดๆ:
+  และมี module declaration ใน `assets.d.ts`
 
-```ts
-declare module '*.html' { const content: string; export default content; }
-declare module '*.css'  { const content: string; export default content; }
-declare module '*.client.js' { const content: string; export default content; }
-```
+- **render pattern** — view `.ts` โหลด html/css/client.js แล้ว `.replace('{{placeholder}}', ...)`
 
 ---
 
-## ข้อดี
+## ข้อดีของโครงสร้างนี้
 
-- `index.ts` เหลือ ~40 บรรทัด เห็น route ทั้งหมดในที่เดียว
+- เห็น route ทั้งหมดใน `index.ts` ไฟล์เดียว
 - แก้ CSS/HTML ได้โดยไม่ต้องเปิดไฟล์ logic — editor ให้ syntax highlight เต็มที่
-- เพิ่ม route ใหม่ = เพิ่มไฟล์ใน `routes/` ไฟล์เดียว
-- test แต่ละ helper แยกได้ง่าย
-- ส่วน backend (`POST /log`) แยกชัด ไม่ปนกับโค้ด render
+- backend (`POST /log`) แยกชัดจากโค้ด render
+- test helper แยกได้ง่าย · Worker ยัง bundle เดียวเหมือนเดิม (deploy ขนาดไม่ต่าง)
 
-## ข้อควรพิจารณา
-
-- เพิ่มจาก 1 ไฟล์ → ~15 ไฟล์ (ถ้าโปรเจกต์เล็กกว่านี้อาจ overkill)
-- ใช้ `.replace()` placeholder ธรรมดา — ถ้าต้องการ type-safety ต้องใช้ template literal ใน `.ts` แทน
-- Worker ยังเป็น bundle เดียวเหมือนเดิม (deploy ขนาดไม่ต่างกัน)
-
----
-
-## ลำดับการ refactor ที่แนะนำ
-
-1. **สร้าง `types.ts`** — ย้าย interfaces ก่อน (ไม่กระทบ runtime)
-2. **สร้าง `lib/`** — ย้าย pure helpers (format, date, badge, csv)
-3. **สร้าง `db/`** — ย้าย `buildWhere` + SQL queries
-4. **สร้าง `views/`** — แยก HTML/CSS/JS ออกจาก `buildDashboard()`
-5. **สร้าง `routes/`** — ย้าย handler แต่ละ endpoint
-6. **เหลือ `index.ts`** ที่เป็น dispatcher อย่างเดียว
-7. ทดสอบทีละ step — รัน `wrangler dev` หลังย้ายแต่ละกลุ่ม
+> ดูการทำงานของแต่ละ endpoint: [WORKER-GUIDE.md](WORKER-GUIDE.md)

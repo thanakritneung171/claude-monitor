@@ -450,10 +450,10 @@ Get-NetTCPConnection -State Established |
 ### 6.3 Console output ขณะรัน
 
 ```
-[claude-monitor] email filter OFF — logging all accounts
+[claude-monitor] email filter ON — only logging accounts containing '@softdebut'
 [claude-conn] SNI seen: claude.ai
 [claude-conn] SNI seen: api.anthropic.com
-[claude-account] ✓ detected email: user@example.com (from /api/auth/current_account)
+[claude-account] ✓ detected email: user@softdebut.com (from /api/auth/current_account)
 [claude-api] claude-code-vscode | claude-sonnet-4-6 | in=3 out=472 | $0.02237
 [claude-desktop] claude-sonnet-4-6 | prompt=145ch | in=1567 out=789 | $0.00234
 ```
@@ -577,7 +577,7 @@ Output:
   Set system proxy to: 127.0.0.1 port 8080
   Or set env var: HTTPS_PROXY=http://127.0.0.1:8080
 
-[claude-monitor] email filter OFF — logging all accounts
+[claude-monitor] email filter ON — only logging accounts containing '@softdebut'
 ```
 
 (ค้างไว้ใน foreground — Ctrl+C เพื่อหยุด)

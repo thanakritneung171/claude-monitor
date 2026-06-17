@@ -1,5 +1,8 @@
 # แก้ไข: Bridge Account Email ไม่อัพเดทเมื่อ Switch Account
 
+> ## ✅ IMPLEMENTED — บันทึกประวัติ
+> การแก้นี้ทำไปแล้ว: `ClaudeBridgeMonitor` อ่าน `account.email_address` จาก `connect` handshake ของ bridge WebSocket แล้ว (ดู `proxy/addon.py`) เก็บไว้เป็นบันทึกที่มาของฟีเจอร์ ในระบบ identity ปัจจุบัน bridge เป็น 1 ใน 4 ช่องทาง resolve email — ดู [CONTEXT-PROMPT-LOG-SYSTEM.md](CONTEXT-PROMPT-LOG-SYSTEM.md) §3.4
+
 ## ปัญหา
 
 เมื่อใช้ **Claude Code** (CLI / VSCode) ที่ login ด้วย Claude subscription account แล้ว switch account — ระบบยังแสดง email ของ account เดิมอยู่

@@ -1,5 +1,7 @@
 # By Client — ประเภท Client ที่ระบบ Tag ได้
 
+> **หมายเหตุ (2026-06):** ค่า `client` ทั้ง 7 และ logic การตรวจจับยัง**ถูกต้อง**ตามปัจจุบัน แต่ **เลขบรรทัดที่อ้างถึง `proxy/addon.py` ในเอกสารนี้ล้าสมัยแล้ว** (โค้ดถูกเพิ่ม/ย้ายหลายรอบ) — logic จริงอยู่ที่ `_detect_client()`, `_looks_like_cowork()`, `_looks_like_code()` ใน `proxy/addon.py` และ bridge mapping ใน `ClaudeBridgeMonitor` ดูสรุปล่าสุดที่ [README.md](README.md) (หัวข้อ "วิธีตรวจจับ Client") + [DEVELOPER.md](DEVELOPER.md)
+
 เอกสารสรุปค่า `client` ที่ proxy (`mitmproxy` addon) ติด tag ลง log แต่ละ row พร้อม logic การตรวจจับและจุดในโค้ด
 
 ---

@@ -1,5 +1,8 @@
 # Account Fix — Per-IP Account Scoping
 
+> ## ⚠️ SUPERSEDED (2026-06) — บันทึกประวัติ
+> เอกสารนี้คือวิธีแก้รุ่นเดิมที่ผูก account **ตาม IP** (per-IP scoping) — **เลิกใช้แล้ว** เพราะ VPN เปลี่ยน IP ทำให้ attribute ผิดคน ปัจจุบันระบบ resolve email จาก **token ที่ request พกมาเอง** (JWT / account_uuid / session cookie) ไม่ใช้ IP ดูโมเดลปัจจุบันที่ [CHANGES-IDENTITY-EMAIL.md](CHANGES-IDENTITY-EMAIL.md) + [CONTEXT-PROMPT-LOG-SYSTEM.md](CONTEXT-PROMPT-LOG-SYSTEM.md)
+
 สรุปปัญหา + วิธีแก้สำหรับเคส `account_email` ผิดเมื่อ proxy ถูก deploy บน server กลาง
 
 ---

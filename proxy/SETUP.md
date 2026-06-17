@@ -70,9 +70,12 @@ notepad config.py
 แก้ไขให้ตรงกับ Worker ที่ deploy ไว้:
 
 ```python
-WORKER_URL = "https://claude-monitor-xxx.<yourname>.workers.dev"
+WORKER_URL = "https://claude-monitor-hooks.<name>.workers.dev"
 API_KEY    = "<key เดียวกับที่ตั้งใน wrangler secret put API_KEY>"
 PROXY_PORT = 8080
+
+EMAIL_FILTER_ENABLED   = True          # ค่าเริ่มต้น ON — log เฉพาะที่ตรง substring
+EMAIL_FILTER_SUBSTRING = "@softdebut"  # เปลี่ยนเป็นโดเมนองค์กร / False = log ทั้งหมด
 ```
 
 > ⚠️ `config.py` อยู่ใน `.gitignore` — อย่า commit secret ขึ้น git
@@ -188,7 +191,7 @@ mitmdump -s addon.py --listen-port 8080 -q --allow-hosts "(anthropic\.com|claude
 console ควรเห็น (ตอนเริ่ม):
 
 ```
-[claude-monitor] email filter OFF — logging all accounts
+[claude-monitor] email filter ON — only logging accounts containing '@softdebut'
 
   Claude Monitor
   -------------------------------------

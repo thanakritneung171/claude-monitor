@@ -1,5 +1,8 @@
 # Filter "Tool loaded." Entries — แผน implement
 
+> ## 📋 ยังไม่ได้ implement (แผน) — สถานะ ณ 2026-06
+> ตรวจ `proxy/addon.py` แล้ว**ยังไม่มี**โค้ดจัดการ entry `"Tool loaded."` ตามแผนนี้ เอกสารนี้เป็น **แผนที่ยังรออยู่** เก็บไว้เป็นข้อเสนอ
+
 แผนจัดการ log entry ที่ prompt เป็น `"Tool loaded."` ซึ่ง Claude Code (CLI / VSCode)
 ยิงเข้ามาตอน reload MCP tool definitions — **เป็น call จริงที่ Anthropic คิดเงิน**
 ต่างจากกรณี `"quota"` ที่ตัดทิ้งได้ (ดู [FILTER-QUOTA-PROBE-PLAN.md](FILTER-QUOTA-PROBE-PLAN.md))

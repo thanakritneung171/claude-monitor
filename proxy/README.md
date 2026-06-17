@@ -97,20 +97,27 @@
 ### 1. การตั้งค่าและตัวช่วย (top-level)
 
 ```python
-import config                      # โหลด WORKER_URL, API_KEY
-EMAIL_FILTER_ENABLED   = False     # toggle filter
-EMAIL_FILTER_SUBSTRING = "@softdebut"
-_ACCOUNT = {"email": "", ...}      # cache ที่ AccountSniffer เติม
-LOG_DIR  = .../log
+import config                      # โหลด WORKER_URL, API_KEY (จาก config.py)
+EMAIL_FILTER_ENABLED   = getattr(config, "EMAIL_FILTER_ENABLED", True)   # ค่าเริ่มต้น ON
+EMAIL_FILTER_SUBSTRING = getattr(config, "EMAIL_FILTER_SUBSTRING", "@softdebut")
+# identity caches — keyed ด้วย EMAIL หรือ token (ไม่ใช่ IP):
+_ACCOUNT_BY_EMAIL = {}   # email -> {name, uuid, account_id, org_id}
+_DEVICE_BY_EMAIL  = {}   # email -> {app_version, os_type, ..., device_id}
+_EMAIL_BY_UUID    = {}   # account_uuid -> email  (ลิงก์หลักของ Claude Code)
+_EMAIL_BY_TOKEN   = {}   # sha256(Bearer token) -> email
+_EMAIL_BY_SESSION = {}   # sha256(sessionKey cookie) -> email
 ```
 
 | Helper | หน้าที่ |
 |---|---|
-| `_log_path()` | path ของ JSONL วันนี้ — `log/claude_YYYY-MM-DD.jsonl` |
-| `_write_local(payload)` | append หนึ่ง JSON line (thread-safe) |
-| `_send_log(payload)` | POST ไป Worker (มี opener ที่ bypass system proxy เพื่อกัน loopback) |
+| `current_email(flow)` | **resolve email ของ request ด้วยลำดับ 4 ชั้น (ไม่ใช้ IP)** — ดูหัวข้อด้านล่าง |
+| `_log_path()` / `_write_local(payload)` | path JSONL วันนี้ / append หนึ่ง JSON line (thread-safe) |
+| `_send_log(payload)` | POST ไป Worker (opener ที่ bypass system proxy เพื่อกัน loopback) |
 | `_calc_cost(model, in, out, cr, cw)` | คำนวณ USD จาก tier (Opus / Sonnet / Haiku) |
 | `_should_log(email)` | True ถ้าผ่าน email filter |
+| `_persist_identity()` / `_load_identity_seed()` | persist/restore identity map ลง `identity_cache.json` (จำข้ามการ restart) |
+
+> **การระบุตัวตน (`current_email`)** resolve ตามลำดับ: (1) **JWT email claim** บน request → (2) **account_uuid** ใน `metadata.user_id` → `_EMAIL_BY_UUID` (Claude Code, ใช้ได้แม้ raw `sk-` key) → (3) **OAuth token** → `_EMAIL_BY_TOKEN` → (4) **session cookie** → `_EMAIL_BY_SESSION` (claude.ai chat) แผนที่ uuid/token→email ถูกเติมโดย `ClaudeCodeMetricsMonitor` (ดัก`/api/claude_code/metrics`) และ persist ลง `identity_cache.json` — resolve ไม่ได้ = email ว่าง = ถูก filter drop (ไม่เดาจาก IP)
 
 ### 2. ตัว detector ของ client + Cowork/Code
 
@@ -180,10 +187,14 @@ class ToolSchemaFixer:
 
 | Class | หน้าที่ | output |
 |---|---|---|
-| `ClaudeAccountSniffer` | จับ email จาก `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` (whitelist เท่านั้น) เก็บใน `_ACCOUNT["email"]` | console + ใช้ใน monitors |
+| `ClaudeAccountSniffer` | จับ email จาก `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` (whitelist เท่านั้น) ผูกกับ session cookie → `_EMAIL_BY_SESSION` | console + ใช้ใน monitors |
+| `ClaudeCodeMetricsMonitor` | ดัก `/api/claude_code/metrics` — สร้าง `_EMAIL_BY_UUID` / `_EMAIL_BY_TOKEN` + เก็บ device info (OS/arch/version) + account_id/org_id keyed ด้วย email | feeds identity cache |
 | `ClaudeConnectionLogger` | log SNI hostname ของทุก TLS handshake (รวม passthrough) — ใช้ค้น endpoint ใหม่ | `log/claude_connections.jsonl` |
 | `ClaudeDesktopDiscovery` | log POST อื่นๆ บน claude.ai/anthropic ที่ยังไม่มี matcher | `log/claude_desktop_discovery.jsonl` |
 | `ClaudeBridgeDiscovery` | log WS frame ของ bridge ที่ยังไม่รู้จัก | `log/claude_bridge_discovery.jsonl` |
+| `IdentityDebug` | (ชั่วคราว) log การ resolve identity ต่อ request — auth scheme, token hash, JWT claims, account_uuid | `log/identity_debug.jsonl` |
+
+> `ClaudeSegmentMonitor` ยังมีในไฟล์แต่ **เลิกใช้** (Segment host ไม่มี session cookie จึง correlate ไม่ได้) — `anon_id` กลายเป็น vestigial
 
 ### Pricing table
 
@@ -205,7 +216,8 @@ USD ต่อ 1M tokens จับ tier จากชื่อ model (`opus` / `ha
   "ts":                    1777993204233,
   "client":                "claude-desktop-cowork",
   "account_email":         "user@softdebut.com",
-  "machine_name":          "MY-PC",
+  "client_ip":             "10.27.0.6",
+  "machine_name":          "10.27.0.6",
   "model":                 "claude-sonnet-4-6",
   "prompt":                "ข้อความที่ผู้ใช้พิมพ์จริง",
   "prompt_chars":          17,
@@ -215,9 +227,20 @@ USD ต่อ 1M tokens จับ tier จากชื่อ model (`opus` / `ha
   "cache_creation_tokens": 22784,
   "cache_read_tokens":     20830,
   "total_tokens":          43640,
-  "cost_usd":              0.092043
+  "cost_usd":              0.092043,
+  "app_version":           "1.12603.1",
+  "os_type":               "windows",
+  "os_version":            "10.0.26200",
+  "host_arch":             "amd64",
+  "terminal":              "vscode",
+  "device_id":             "a223de65-...",
+  "mac_address":           "",
+  "account_id":            "user_01M2GB8...",
+  "org_id":                "909caccf-..."
 }
 ```
+
+> `client_ip` เก็บเป็น **audit เท่านั้น** (ไม่ใช้ระบุตัวตน) · device info + account_id/org_id เติมจาก cache ที่ keyed ด้วย email (มาจาก metrics) — บาง client เช่น Cowork ที่ไม่ยิง metrics ฟิลด์เหล่านี้จะว่าง
 
 ---
 
@@ -275,7 +298,7 @@ notepad config.py
 ```
 
 ```python
-WORKER_URL = "https://claude-monitor-xxx.<yourname>.workers.dev"
+WORKER_URL = "https://claude-monitor-hooks.<name>.workers.dev"
 API_KEY    = "<key เดียวกับที่ตั้งไว้ใน wrangler secret put API_KEY>"
 PROXY_PORT = 8080
 ```
@@ -354,10 +377,10 @@ mitmdump -s addon.py --listen-port 8080 -q --allow-hosts "(anthropic\.com|claude
 console ควรเห็น (เมื่อมี traffic):
 
 ```
-[claude-monitor] email filter OFF — logging all accounts
+[claude-monitor] email filter ON — only logging accounts containing '@softdebut'
 [claude-conn] SNI seen: claude.ai
 [claude-conn] SNI seen: api.anthropic.com
-[claude-account] ✓ detected email: user@example.com (from /api/auth/current_account)
+[claude-account] ✓ detected email: user@softdebut.com (from /api/auth/current_account)
 [claude-api] claude-desktop-cowork | claude-sonnet-4-6 | in=3 out=23 | $0.09204
 ```
 
@@ -432,13 +455,13 @@ mitmproxy จะ re-import `addon.py` อัตโนมัติเมื่อ
 
 ## ปรับแต่ง
 
-### เปิด email filter
+### email filter (ค่าเริ่มต้น ON)
 
-[addon.py](addon.py) ราวบรรทัด 38:
+ตั้งใน [config.py](config.py) (addon อ่านผ่าน `getattr(config, ...)` — ค่า default ใน addon คือ ON):
 
 ```python
-EMAIL_FILTER_ENABLED   = True              # True = log เฉพาะที่ตรง substring
-EMAIL_FILTER_SUBSTRING = "@yourcompany"    # case-insensitive
+EMAIL_FILTER_ENABLED   = True              # True = log เฉพาะที่ตรง substring (ดีฟอลต์)
+EMAIL_FILTER_SUBSTRING = "@softdebut"      # case-insensitive · False/"" = log ทั้งหมด
 ```
 
 เมื่อเปิด:
@@ -596,14 +619,17 @@ Get-ChildItem Cert:\CurrentUser\Root\* |
 
 ```
 log/
-├── claude_2026-05-08.jsonl              # log หลัก — 1 บรรทัด = 1 call (โครงสร้างด้านบน)
+├── claude_2026-06-12.jsonl              # log หลัก — 1 บรรทัด = 1 call (โครงสร้างด้านบน)
 ├── claude_connections.jsonl             # SNI ของทุก TLS handshake
 ├── claude_desktop_discovery.jsonl       # POST อื่นๆ บน claude.ai/anthropic ที่ยังไม่ดัก
 ├── claude_bridge_discovery.jsonl        # WebSocket frame ของ bridge ที่ยังไม่รู้จัก
+├── identity_debug.jsonl                 # debug การ resolve identity ต่อ request
 └── schema_fixes.jsonl                   # tool ที่ ToolSchemaFixer rewrite
 ```
 
 ทั้งหมด append-only ลบเองได้ตลอด ไม่กระทบ proxy
+
+> `proxy/identity_cache.json` (อยู่ในโฟลเดอร์ proxy ไม่ใช่ log/) คือ persistent identity map ที่ `_persist_identity()` เขียนไว้ — ลบได้ แต่จะเสีย seed ตอน cold-start (ต้องรอ metrics ยิงใหม่)
 
 ---
 
