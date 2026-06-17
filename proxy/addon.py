@@ -62,6 +62,7 @@ _DEVICE_BY_EMAIL:  dict[str, dict] = {}   # email -> {app_version, os_type, os_v
 _EMAIL_BY_SESSION: dict[str, str]  = {}   # sha256(sessionKey cookie) -> email   (claude.ai chat)
 _EMAIL_BY_TOKEN:   dict[str, str]  = {}   # sha256(OAuth Bearer token)  -> email   (clients that send a JWT)
 _EMAIL_BY_UUID:    dict[str, str]  = {}   # account_uuid -> email   (Claude Code — PRIMARY link, even with raw sk- keys)
+_EMAIL_BY_ANON:    dict[str, str]  = {}   # Segment anonymousId (ajs_anonymous_id cookie) -> email   (claude.ai web chat)
 
 def _device_info(email: str) -> dict:
     """Return device/env + account fields for an account email (all default '')."""
@@ -117,11 +118,27 @@ def _jwt_email(flow) -> str:
     return email if _looks_like_email(email) else ""
 
 
+def _cookie_header(flow) -> str:
+    """Full cookie jar as one string. HTTP/2 clients (Chrome on claude.ai) often
+    split the Cookie header across MULTIPLE `cookie` header fields; a plain
+    headers.get("Cookie") returns only the FIRST field, so sessionKey /
+    ajs_anonymous_id were silently missed when they landed in a later field
+    (this is what broke web-chat identity ~2026-06-11). get_all() + join
+    recovers every cookie regardless of how many fields it was split into."""
+    try:
+        vals = flow.request.headers.get_all("Cookie")
+    except Exception:
+        vals = None
+    if vals:
+        return "; ".join(v for v in vals if v)
+    return flow.request.headers.get("Cookie", "") or \
+           flow.request.headers.get("cookie", "")
+
+
 def _session_key(flow) -> str:
     """Stable per-login key for claude.ai chat: sha256 of the sessionKey cookie.
     Hashed so we never hold the raw session token in memory. '' when no cookie."""
-    raw = flow.request.headers.get("Cookie", "") or \
-          flow.request.headers.get("cookie", "")
+    raw = _cookie_header(flow)
     if not raw:
         return ""
     token = ""
@@ -133,6 +150,30 @@ def _session_key(flow) -> str:
     if not token:
         return ""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _anon_key(flow) -> str:
+    """Segment anonymousId for claude.ai web chat: value of the first-party
+    `ajs_anonymous_id` cookie. analytics.js stores the SAME anonymousId here
+    that it reports next to `traits.email` in the /v1/b telemetry batch, so it
+    links a cookie-authenticated completion (no email, no account_uuid) back to
+    the email — VPN-safe, no IP. Not hashed: the anonymousId is the cross-host
+    join key, not a secret. '' when the cookie is absent."""
+    raw = _cookie_header(flow)
+    if not raw:
+        return ""
+    for part in raw.split(";"):
+        k, _, v = part.strip().partition("=")
+        if k == "ajs_anonymous_id":
+            # Segment may URL-encode/quote the value, e.g. %22claudeai.v1.<uuid>%22
+            val = v.strip().strip('"')
+            try:
+                from urllib.parse import unquote
+                val = unquote(val).strip().strip('"')
+            except Exception:
+                pass
+            return val
+    return ""
 
 
 def _bearer_key(flow) -> str:
@@ -180,7 +221,8 @@ def current_email(flow) -> str:
       1) JWT on the request itself     (clients whose token carries an email claim)
       2) account_uuid in metadata      (Claude Code — works with raw sk- API keys)
       3) OAuth token → email map       (clients that send a JWT, email from metrics)
-      4) session cookie → email map    (claude.ai chat, filled by ClaudeAccountSniffer)"""
+      4) anonymousId cookie → email    (claude.ai web chat, filled by ClaudeSegmentMonitor)
+      5) session cookie → email map    (claude.ai chat, filled by ClaudeAccountSniffer)"""
     email = _jwt_email(flow)
     if email:
         return email
@@ -190,6 +232,9 @@ def current_email(flow) -> str:
     tok = _bearer_key(flow)
     if tok and _EMAIL_BY_TOKEN.get(tok):
         return _EMAIL_BY_TOKEN[tok]
+    anon = _anon_key(flow)
+    if anon and _EMAIL_BY_ANON.get(anon):
+        return _EMAIL_BY_ANON[anon]
     sess = _session_key(flow)
     return _EMAIL_BY_SESSION.get(sess, "") if sess else ""
 
@@ -229,7 +274,19 @@ def _set_session_email(sess: str, email: str, name: str = "", uuid_: str = "") -
     if _EMAIL_BY_SESSION.get(sess) != email:
         _EMAIL_BY_SESSION[sess] = email
         print(f"[claude-account] ✓ session → {email}")
+        _persist_identity()
     _set_account_email(email, name=name, uuid_=uuid_, source="claude.ai")
+
+
+def _set_anon_email(anon: str, email: str) -> None:
+    """Map a Segment anonymousId (ajs_anonymous_id cookie) → email — the link
+    that lets claude.ai web completions (cookie-only, no email/uuid) resolve."""
+    if not anon or not _looks_like_email(email):
+        return
+    if _EMAIL_BY_ANON.get(anon) != email:
+        _EMAIL_BY_ANON[anon] = email
+        print(f"[claude-segment] ✓ anon → {email}")
+        _persist_identity()
 
 
 # ── Persistent identity cache ────────────────────────────────────────────────
@@ -244,9 +301,11 @@ UUID_MAP_FILE = Path(__file__).resolve().parent / "uuid_email_map.json"  # legac
 def _persist_identity() -> None:
     try:
         IDENTITY_FILE.write_text(json.dumps({
-            "uuid_email": _EMAIL_BY_UUID,
-            "account":    _ACCOUNT_BY_EMAIL,
-            "device":     _DEVICE_BY_EMAIL,
+            "uuid_email":    _EMAIL_BY_UUID,
+            "account":       _ACCOUNT_BY_EMAIL,
+            "device":        _DEVICE_BY_EMAIL,
+            "anon_email":    _EMAIL_BY_ANON,      # Segment anonymousId → email (web chat)
+            "session_email": _EMAIL_BY_SESSION,   # sha256(sessionKey cookie) → email (web chat)
         }, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
@@ -269,6 +328,12 @@ def _load_identity_seed() -> None:
                 for em, d in (data.get("device") or {}).items():
                     if _looks_like_email(em) and isinstance(d, dict):
                         _DEVICE_BY_EMAIL[em] = d
+                for an, e in (data.get("anon_email") or {}).items():
+                    if an and _looks_like_email(e):
+                        _EMAIL_BY_ANON[an] = e
+                for s, e in (data.get("session_email") or {}).items():
+                    if s and _looks_like_email(e):
+                        _EMAIL_BY_SESSION[s] = e
     except Exception as exc:
         print(f"[claude-monitor] WARN could not load identity cache: {exc}")
     # Back-compat: merge the legacy flat uuid→email file if it still exists.
@@ -282,7 +347,8 @@ def _load_identity_seed() -> None:
     except Exception:
         pass
     print(f"[claude-monitor] identity seed: {len(_EMAIL_BY_UUID)} uuid→email, "
-          f"{len(_ACCOUNT_BY_EMAIL)} accounts, {len(_DEVICE_BY_EMAIL)} devices loaded")
+          f"{len(_ACCOUNT_BY_EMAIL)} accounts, {len(_DEVICE_BY_EMAIL)} devices, "
+          f"{len(_EMAIL_BY_ANON)} anon→email, {len(_EMAIL_BY_SESSION)} session→email loaded")
 
 
 HOSTNAME = socket.gethostname()
@@ -766,6 +832,7 @@ class ClaudeAPIMonitor:
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                client,
             "account_email":         email,
+            "anon_id":               _anon_key(flow),
             "client_ip":             ip,
             "machine_name":          ip,
             "model":                 model,
@@ -804,6 +871,17 @@ class ClaudeDesktopMonitor:
         path = flow.request.path.split("?", 1)[0]
         if not _COMPLETION_RE.match(path):
             return
+
+        # TEMP (Step 0): confirm the web completion carries the ajs_anonymous_id
+        # cookie that links it to /v1/b email. Remove once anon resolution is
+        # confirmed stable. Prints once per proxy run.
+        if not getattr(ClaudeDesktopMonitor, "_dbg_cookies", False):
+            ClaudeDesktopMonitor._dbg_cookies = True
+            raw = flow.request.headers.get("Cookie", "") or \
+                  flow.request.headers.get("cookie", "")
+            names = sorted({p.strip().partition("=")[0] for p in raw.split(";") if p.strip()})
+            print(f"[claude-desktop][debug] completion cookie names = {names}")
+            print(f"[claude-desktop][debug] ajs_anonymous_id = {_anon_key(flow) or '(absent)'}")
 
         ct     = flow.response.headers.get("content-type", "")
         status = flow.response.status_code
@@ -851,6 +929,7 @@ class ClaudeDesktopMonitor:
         cw  = parsed.get("cache_creation_tokens", 0)
 
         email = current_email(flow)
+
         if not _should_log(email):
             print(f"[claude-desktop] SKIP (filter) | {model} | email={email or '(none)'}")
             return
@@ -861,6 +940,7 @@ class ClaudeDesktopMonitor:
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                "claude-desktop",
             "account_email":         email,
+            "anon_id":               _anon_key(flow),
             "client_ip":             ip,
             "machine_name":          ip,
             "model":                 model,
@@ -1257,6 +1337,7 @@ class ClaudeBridgeMonitor:
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                sess["client"],
             "account_email":         email,
+            "anon_id":               "",
             "client_ip":             ip,
             "machine_name":          ip,
             "model":                 model,
@@ -1495,13 +1576,53 @@ class ClaudeCodeMetricsMonitor:
               f"uuid={account_uuid[:8] + '...' if account_uuid else '-'}")
 
 
-# ── Segment analytics monitor — REMOVED ─────────────────────────────────────
-# Previously intercepted a-api.anthropic.com/v1/b to capture anonymousId + email
-# keyed by client IP (a browser-VPN-safe fallback). IP is no longer used as
-# identity, and that host doesn't carry the claude.ai session cookie, so the
-# Segment batch can't be correlated to a chat session — anon_id is now vestigial.
-# Browser/Desktop chat email now comes from the session-cookie map
-# (ClaudeAccountSniffer); Cowork/Desktop-Code go through /v1/messages with a JWT.
+# ── Segment analytics monitor — email source for claude.ai web chat ─────────
+# a-api.anthropic.com/v1/b carries, per batch event, context.traits.email +
+# account_uuid and a top-level anonymousId (= the `ajs_anonymous_id` first-party
+# cookie that analytics.js sets on claude.ai). The web completion request
+# authenticates with a cookie and carries NO email and NO account_uuid, but DOES
+# carry ajs_anonymous_id — so this batch lets current_email() resolve web
+# prompts by anonymousId (VPN-safe, no IP, replacing the old per-IP Segment
+# correlation). Also feeds account_uuid → email for any account_uuid-bearing path.
+class ClaudeSegmentMonitor:
+    """Intercepts a-api.anthropic.com/v1/b to learn anonymousId/account_uuid → email."""
+
+    def request(self, flow: http.HTTPFlow):
+        if flow.request.host != "a-api.anthropic.com":
+            return
+        if flow.request.path.split("?", 1)[0] != "/v1/b":
+            return
+        if flow.request.method != "POST":
+            return
+
+        try:
+            body = json.loads(flow.request.content)
+        except Exception:
+            return
+
+        # Segment may send a {batch:[...]} envelope or a single top-level event.
+        batch = body.get("batch") if isinstance(body, dict) else None
+        if not isinstance(batch, list):
+            batch = [body] if isinstance(body, dict) else []
+
+        for ev in batch:
+            if not isinstance(ev, dict):
+                continue
+            ctx    = ev.get("context") if isinstance(ev.get("context"), dict) else {}
+            traits = ctx.get("traits") if isinstance(ctx.get("traits"), dict) else {}
+            if not traits and isinstance(ev.get("traits"), dict):
+                traits = ev["traits"]   # identify events keep traits at top level
+
+            email = traits.get("email") or ""
+            if not _looks_like_email(email):
+                continue
+
+            account_uuid = str(traits.get("account_uuid") or ev.get("userId") or "")
+            anon         = str(ev.get("anonymousId") or "")
+            if account_uuid:
+                _set_account_email(email, uuid_=account_uuid, source="segment")
+            if anon:
+                _set_anon_email(anon, email)
 
 
 # ── TEMPORARY identity debug ─────────────────────────────────────────────────
@@ -1566,6 +1687,7 @@ addons = [
     ToolSchemaFixer(),             # rewrite tool input_schema with top-level oneOf/allOf/anyOf
     ClaudeAccountSniffer(),        # detect email first so completions know it
     ClaudeCodeMetricsMonitor(),    # capture OS/arch/version + account_id/org_id (keyed by email)
+    ClaudeSegmentMonitor(),        # a-api.anthropic.com/v1/b — anonymousId/account_uuid → email
     ClaudeAPIMonitor(),            # api.anthropic.com (API key / Claude Code CLI & VSCode)
     ClaudeDesktopMonitor(),        # claude.ai chat completion (Desktop app / browser)
     ClaudeDesktopDiscovery(),      # log other claude.ai POSTs for debugging
