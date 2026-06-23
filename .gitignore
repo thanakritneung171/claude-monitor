@@ -169,6 +169,7 @@ dist
 proxy/config.py
 proxy/uuid_email_map.json
 proxy/identity_cache.json
+proxy/*.bak
 __pycache__/
 *.pyc
 

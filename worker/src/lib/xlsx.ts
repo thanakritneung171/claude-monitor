@@ -9,6 +9,7 @@ export const S = {
 	STAT_LABEL: 4,  // bold + light peach bg (KV label)
 	NUM_COST:   5,  // #,##0.0000
 	NUM_INT:    6,  // #,##0
+	WRAP:       7,  // normal text + wrapText (long prompt cells)
 } as const;
 
 export interface XCell { v: string | number | null; s?: number }
@@ -64,11 +65,13 @@ export function buildXlsx(sheets: XSheet[]): Uint8Array {
 			for (let c = 0; c < sheet.rows[r].length; c++) {
 				const { v, s } = sheet.rows[r][c];
 				const addr = colLetter(c) + (r + 1);
-				const sa   = s ? ` s="${s}"` : '';
 				if (v === null || v === '') {
-					if (s) cx.push(`<c r="${addr}"${sa}/>`);
+					if (s) cx.push(`<c r="${addr}" s="${s}"/>`);
 					continue;
 				}
+				// Always reference an xf explicitly (default 0) so every cell inherits
+				// vertical="top"; an absent s= is treated as "no format" (bottom) by some viewers.
+				const sa = ` s="${s ?? 0}"`;
 				if (typeof v === 'number') cx.push(`<c r="${addr}"${sa}><v>${v}</v></c>`);
 				else cx.push(`<c r="${addr}" t="s"${sa}><v>${intern(v)}</v></c>`);
 			}
@@ -155,7 +158,8 @@ ${pool.map(s => `<si><t xml:space="preserve">${xe(s)}</t></si>`).join('\n')}
 	//  Fills:  0=none, 1=gray125, 2=peach #FFE4D2, 3=blue #D9E1F2, 4=light-peach #FFF8F4
 	//  Borders:0=none
 	//  xf idx: 0=default, 1=bold, 2=sec-title(font2+fill2), 3=col-hdr(font1+fill3),
-	//          4=stat-label(font1+fill4), 5=NUM_COST(164), 6=NUM_INT(3)
+	//          4=stat-label(font1+fill4), 5=NUM_COST(164), 6=NUM_INT(3), 7=wrap
+	//  All xf use alignment vertical="top".
 	const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="1">
@@ -179,7 +183,7 @@ ${pool.map(s => `<si><t xml:space="preserve">${xe(s)}</t></si>`).join('\n')}
 <cellStyleXfs count="1">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
 </cellStyleXfs>
-<cellXfs count="7">
+<cellXfs count="8">
 <xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top"/></xf>
 <xf numFmtId="0"   fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top"/></xf>
 <xf numFmtId="0"   fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="top"/></xf>
@@ -187,6 +191,7 @@ ${pool.map(s => `<si><t xml:space="preserve">${xe(s)}</t></si>`).join('\n')}
 <xf numFmtId="0"   fontId="1" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="top"/></xf>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf>
 <xf numFmtId="3"   fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf>
+<xf numFmtId="0"   fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>
 </cellXfs>
 </styleSheet>`;
 

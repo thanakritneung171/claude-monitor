@@ -135,7 +135,7 @@ function buildLogSheet(logs: ApiLog[]): XSheet {
 		{ v: r.client_ip },
 		{ v: r.machine_name },
 		{ v: r.model },
-		{ v: r.prompt },
+		{ v: r.prompt, s: S.WRAP },
 		n(r.prompt_chars),
 		n(r.response_chars),
 		n(r.input_tokens),
