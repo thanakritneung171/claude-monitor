@@ -20,10 +20,11 @@ $env:NODE_EXTRA_CA_CERTS = $caCert
 $env:REQUESTS_CA_BUNDLE  = $caCert
 $env:SSL_CERT_FILE       = $caCert
 
-# Enable Windows System Proxy
-$regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
-Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 1
-Set-ItemProperty -Path $regPath -Name ProxyServer -Value "$($proxyUrl -replace '^http://','')"
+# WinINET system proxy is intentionally NOT set here. A catch-all manual proxy
+# breaks apps like DingTalk whenever the VPN is off (10.10.84.1 is only reachable
+# on VPN). WinINET routing is handled by a PAC instead - run install-claude-pac.bat
+# once. It sends ONLY Claude/Anthropic domains through the proxy; everything else
+# stays DIRECT. This script now only sets the session env vars the Node CLI reads.
 
 Write-Host ""
 Write-Host "  Proxy ENABLED for this session" -ForegroundColor Green
