@@ -7,5 +7,6 @@ $env:HTTP_PROXY          = ""
 $env:NODE_EXTRA_CA_CERTS = ""
 $env:REQUESTS_CA_BUNDLE  = ""
 $env:SSL_CERT_FILE       = ""
+$env:NO_PROXY            = ""
 
 Write-Host "  Proxy DISABLED for this session" -ForegroundColor Yellow

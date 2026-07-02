@@ -61,7 +61,7 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 # Also clear persistent user env vars set by install-claude-proxy.ps1
 $envKeys = @('HTTPS_PROXY', 'HTTP_PROXY', 'NODE_EXTRA_CA_CERTS',
-             'REQUESTS_CA_BUNDLE', 'SSL_CERT_FILE')
+             'REQUESTS_CA_BUNDLE', 'SSL_CERT_FILE', 'NO_PROXY')
 $clearedEnv = @()
 foreach ($key in $envKeys) {
     if ([Environment]::GetEnvironmentVariable($key, 'User')) {

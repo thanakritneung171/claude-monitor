@@ -11,12 +11,14 @@ $caCert       = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
 
 # Internal hosts to bypass proxy. Without these, requests to internal services
-# (GitLab on 10.16.x.x, etc.) hit mitmproxy on 10.10.84.1 and time out because
+# (credential check on 103.87.217.15, GitLab/services on 10.16.x.x, dev hosts on
+# *.dev.softdebut.com, etc.) hit mitmproxy on 10.10.84.1 and time out because
 # that proxy can't route back to the internal subnet.
-#   - Windows ProxyOverride uses semicolons + supports the <local> token
-#   - NO_PROXY env var uses commas + supports CIDR in Node 16+/curl 7.86+
-$proxyBypassWin     = "10.16.*;<local>"
-$proxyBypassNoProxy = "10.16.0.0/16,localhost,127.0.0.1"
+#   - Windows ProxyOverride uses semicolons + wildcards (* and the <local> token)
+#   - NO_PROXY env var uses commas + CIDR/dot-suffix (Node 16+/curl 7.86+);
+#     <local> and * wildcards aren't portable there, hence 10.16.0.0/16 + .dev...
+$proxyBypassWin     = "localhost;127.0.0.1;103.87.217.15;10.16.*;*.dev.softdebut.com;<local>"
+$proxyBypassNoProxy = "localhost,127.0.0.1,103.87.217.15,10.16.0.0/16,.dev.softdebut.com"
 
 if (-not (Test-Path $caCert)) {
     Write-Host "CA cert not found. Generating via mitmdump..." -ForegroundColor Yellow

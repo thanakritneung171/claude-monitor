@@ -18,6 +18,19 @@ $proxyUrl     = "http://10.10.84.1:8081"
 $caCert       = Join-Path $env:USERPROFILE ".mitmproxy\mitmproxy-ca-cert.pem"
 $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
 
+# Hosts that must BYPASS the proxy (direct connection). The proxy env vars below
+# are persistent + global to the user, so any non-Claude app would otherwise be
+# forced through 10.10.84.1:8081 and fail when off-VPN (same class of bug as
+# DingTalk). List such hosts here to keep them on a direct connection. NO_PROXY
+# matches by CIDR / dot-suffix / exact host, never by path (wildcards like
+# 10.16.* aren't portable across env-var tools — use CIDR + a leading-dot suffix).
+$bypassHosts  = @(
+    "103.87.217.15"        # internal credential check (/api/Credential/check)
+    "10.16.0.0/16"         # internal 10.16.* subnet
+    ".dev.softdebut.com"   # *.dev.softdebut.com dev services
+)
+$noProxy      = (@("localhost", "127.0.0.1") + $bypassHosts) -join ","
+
 if (-not (Test-Path $caCert)) {
     Write-Error "CA cert not found at $caCert — run mitmproxy at least once to generate it."
     return
@@ -79,14 +92,17 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [Environment]::SetEnvironmentVariable('NODE_EXTRA_CA_CERTS', $caCert,   'User')
 [Environment]::SetEnvironmentVariable('REQUESTS_CA_BUNDLE',  $caCert,   'User')
 [Environment]::SetEnvironmentVariable('SSL_CERT_FILE',       $caCert,   'User')
+# Bypass list so non-Claude apps (e.g. 103.87.217.15 credential check) connect direct
+[Environment]::SetEnvironmentVariable('NO_PROXY',            $noProxy,  'User')
 
 Write-Host ""
 Write-Host "  Claude proxy config installed" -ForegroundColor Green
 Write-Host "  -------------------------------------" -ForegroundColor DarkGray
 Write-Host "  Claude Code settings.json: $settingsPath"
 Write-Host "  Persistent user env vars:  HTTPS_PROXY, HTTP_PROXY, NODE_EXTRA_CA_CERTS,"
-Write-Host "                             REQUESTS_CA_BUNDLE, SSL_CERT_FILE"
+Write-Host "                             REQUESTS_CA_BUNDLE, SSL_CERT_FILE, NO_PROXY"
 Write-Host "  Proxy URL:                 $proxyUrl"
+Write-Host "  Bypass (NO_PROXY):         $noProxy"
 Write-Host "  CA cert:                   $caCert"
 Write-Host ""
 Write-Host "  IMPORTANT: Fully QUIT Claude Desktop (system tray → Quit) and reopen" -ForegroundColor Yellow
