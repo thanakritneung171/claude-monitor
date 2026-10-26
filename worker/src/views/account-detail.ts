@@ -27,7 +27,7 @@ function toDisplayDate(iso: string): string {
 	return d && m && y ? `${d}/${m}/${y}` : iso;
 }
 
-function dashboardAllUrl(email: string, period: string, dateFrom?: string, dateTo?: string): string {
+function dashboardAllUrl(email: string, period: string, clientFilter: string, modelFilter: string, dateFrom?: string, dateTo?: string): string {
 	const params = new URLSearchParams({
 		date_from: dateFrom || periodToDateFrom(period),
 		date_to:   dateTo   || todayBkk(),
@@ -35,6 +35,8 @@ function dashboardAllUrl(email: string, period: string, dateFrom?: string, dateT
 		per_page: 'all',
 		page: '1',
 	});
+	if (modelFilter)  params.set('model',  modelFilter);
+	if (clientFilter) params.set('client', clientFilter);
 	return '/?' + params.toString();
 }
 
@@ -204,7 +206,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 			</div>
 		</div>
 		<div class="actions">
-			<a href="${dashboardAllUrl(d.email, period, dateFrom, dateTo)}" class="btn primary">ดู Logs ทั้งหมด</a>
+			<a href="${dashboardAllUrl(d.email, period, clientFilter, modelFilter, dateFrom, dateTo)}" class="btn primary">ดู Logs ทั้งหมด</a>
 		</div>
 	</section>
 
@@ -348,7 +350,7 @@ function renderBody(d: AccountDetailData, period: string, clientFilter: string, 
 	<div class="prompts-table">
 		<div class="table-head">
 			<h3>Recent activity</h3>
-			<a href="${dashboardAllUrl(d.email, period, dateFrom, dateTo)}" class="btn">ดูทั้งหมด</a>
+			<a href="${dashboardAllUrl(d.email, period, clientFilter, modelFilter, dateFrom, dateTo)}" class="btn">ดูทั้งหมด</a>
 		</div>
 		<div class="scroll">
 			<table>

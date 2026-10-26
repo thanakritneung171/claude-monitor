@@ -180,8 +180,8 @@ function openBreakdownModal(cat) {
 				nameHtml = '<span class="swatch" style="background:' + color + '"></span>' + escapeHtml(it.name);
 			}
 			const pct = Math.max(2, ((it.cost || 0) / max) * 100);
-			var linkBtn = (cat === 'account' && it.name && it.name !== '—')
-				? '<a href="/account?identity=' + encodeURIComponent(it.name) + '" class="bar-link-btn">ดูรายละเอียด →</a>'
+			var linkBtn = (cat === 'account' && it.url)
+				? '<a href="' + escapeHtml(it.url) + '" class="bar-link-btn">ดูรายละเอียด →</a>'
 				: '';
 			return '<div class="bar-row">' +
 				'<div class="name">' + nameHtml + '</div>' +

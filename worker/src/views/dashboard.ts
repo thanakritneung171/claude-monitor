@@ -180,6 +180,14 @@ function buildExportUrl(filters: Filters): string {
 	return '/export?' + p.toString();
 }
 
+// Carry the active date range + model/client filters into the account detail page
+function buildAccountDetailUrl(filters: Filters, identity: string): string {
+	const p = new URLSearchParams({ identity, date_from: filters.dateFrom, date_to: filters.dateTo });
+	if (filters.model)  p.set('model',  filters.model);
+	if (filters.client) p.set('client', filters.client);
+	return '/account?' + p.toString();
+}
+
 function showMoreBtn(cat: 'model' | 'account' | 'client', total: number): string {
 	if (total <= TOP_N) return '';
 	return `<button type="button" class="show-more" data-cat="${cat}">ดูทั้งหมด →</button>`;
@@ -227,12 +235,12 @@ export function renderDashboard(d: RenderInput): string {
 
 	const byModelHtml   = barRowsHtml(modelItems.slice(0, TOP_N), 'model',  mColorMap);
 	const byAccountHtml = barRowsHtml(accountItems.slice(0, TOP_N), 'default', undefined,
-		(identity) => `/account?identity=${encodeURIComponent(identity)}`);
+		(identity) => buildAccountDetailUrl(d.filters, identity));
 	const byClientHtml  = barRowsHtml(clientItems.slice(0, TOP_N), 'client', cColorMap);
 
 	const breakdownAll = JSON.stringify({
 		model:   modelItems.map(it => ({ ...it, color: mColorMap.get(it.name) ?? '' })),
-		account: accountItems,
+		account: accountItems.map(it => ({ ...it, url: it.name !== '—' ? buildAccountDetailUrl(d.filters, it.name) : '' })),
 		client:  clientItems.map(it => ({ ...it, color: cColorMap.get(it.name) ?? '' })),
 	});
 
