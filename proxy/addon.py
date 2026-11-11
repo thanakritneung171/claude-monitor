@@ -10,6 +10,8 @@ Usage:
     mitmdump -s addon.py --listen-port 8080 --allow-hosts "claude.ai"
 """
 
+import base64
+import codecs
 import hashlib
 import json
 import re
@@ -17,6 +19,7 @@ import socket
 import threading
 import urllib.request
 import uuid
+import zlib
 from datetime import datetime
 from pathlib import Path
 
@@ -964,12 +967,21 @@ class ClaudeDesktopMonitor:
 
 
 # ── Claude Desktop cloud session (/v1/code/sessions/cse_*/events) ────────────
-# Desktop v5.x ส่ง prompt บางโหมดเป็น "cloud session": client POST event ไปที่
-# claude.ai/v1/code/sessions/<cse_id>/events แล้ว model รันบน cloud ของ Anthropic
-# จึงไม่มี /v1/messages ผ่าน proxy — เห็นได้แค่ prompt ขาออก (token/cost ยังเป็น 0
-# จนกว่าจะทำ B2–B5 จากผล debug ขาลง)
+# Desktop v5.x ส่ง prompt บางโหมดเป็น "cloud session": model รันบน cloud ของ Anthropic
+# จึงไม่มี /v1/messages ผ่าน proxy ข้อมูลที่เห็นมี 2 ทาง:
+#   ขาออก  POST /v1/code/sessions/<cse>/events        → prompt (+ cookie → email)
+#   ขาลง   GET  /v1/code/sessions/<cse>/events/stream → SSE (gzip) มี message_start /
+#          assistant (model) และ event "result" ที่มี usage ของ turn นั้น
+# จึงเก็บ prompt ไว้ก่อน (_PENDING_TURN) แล้ว log ตอนได้ result พร้อม model/token/cost
+# หมายเหตุ: result.total_cost_usd / modelUsage เป็นยอดสะสมทั้ง session — ห้ามใช้ต่อ turn
 _CODE_SESSION_EVENTS_RE = re.compile(r"^/v1/code/sessions/(cse_[A-Za-z0-9]+)/events$")
+_CODE_SESSION_STREAM_RE = re.compile(r"^/v1/code/sessions/(cse_[A-Za-z0-9]+)/events/stream$")
 _MODEL_BY_SESS: dict[str, str] = {}   # sha256(sessionKey) -> model ล่าสุดที่เห็น (จาก generate_session_title)
+
+_PENDING_TURN: dict[str, dict] = {}   # cse_id -> {base: log dict, model, resp_chars, timer}
+_LOGGED_RESULTS: set[str] = set()     # event_id ของ result ที่ log แล้ว (กัน replay / หลายหน้าต่าง)
+_TURN_LOCK = threading.Lock()
+TURN_TIMEOUT_S = 300                  # ไม่ได้ result ใน 5 นาที → log prompt แบบ token = 0
 
 
 def _extract_prompt_session_events(body) -> str:
@@ -992,15 +1004,47 @@ def _extract_prompt_session_events(body) -> str:
     return prompt
 
 
-class ClaudeCodeSessionMonitor:
-    """Log prompt ของ Claude Desktop cloud session เป็น client 'claude-desktop'."""
+def _flush_turn(cse: str, result: dict | None = None) -> None:
+    """ส่ง log ของ turn ที่รออยู่ — มี result = token/cost จริง, ไม่มี (timeout) = 0"""
+    with _TURN_LOCK:
+        t = _PENDING_TURN.pop(cse, None)
+    if not t:
+        return
+    t["timer"].cancel()
+    u = (result or {}).get("usage") or {}
+    inp = int(u.get("input_tokens") or 0)
+    out = int(u.get("output_tokens") or 0)
+    cr  = int(u.get("cache_read_input_tokens") or 0)
+    cw  = int(u.get("cache_creation_input_tokens") or 0)
+    model = t["model"] or "unknown"
+    log = {
+        **t["base"],
+        "ts":                    int(datetime.now().timestamp() * 1000),
+        "model":                 model,
+        "response_chars":        t["resp_chars"],
+        "input_tokens":          inp,
+        "output_tokens":         out,
+        "cache_creation_tokens": cw,
+        "cache_read_tokens":     cr,
+        "total_tokens":          inp + out + cr + cw,
+        "cost_usd":              _calc_cost(model, inp, out, cr, cw) if result else 0.0,
+    }
+    _write_local(log)
+    threading.Thread(target=_send_log, args=(log,), daemon=True).start()
+    print(f"[claude-session] {cse} | {model} | in={inp:,} out={out:,} cr={cr:,} cw={cw:,} "
+          f"| ${log['cost_usd']:.5f} | {'result' if result else 'TIMEOUT (no result)'}")
 
+
+class ClaudeCodeSessionMonitor:
+    """Log Claude Desktop cloud session เป็น client 'claude-desktop' (prompt + model/token/cost)."""
+
+    # ── ขาออก: prompt ────────────────────────────────────────────────────────
     def response(self, flow: http.HTTPFlow):
         if "claude.ai" not in flow.request.host or flow.request.method != "POST":
             return
         path = flow.request.path.split("?", 1)[0]
 
-        # model มากับ generate_session_title (ข้อความแรกของ session) — จำไว้ต่อ login
+        # model มากับ generate_session_title (ข้อความแรกของ session) — ค่าสำรองเท่านั้น
         if path.endswith("/dust/generate_session_title"):
             try:
                 m = json.loads(flow.request.content).get("model") or ""
@@ -1022,23 +1066,14 @@ class ClaudeCodeSessionMonitor:
         if not prompt:
             return   # batch ที่มีแต่ control_request / reminder — ไม่ใช่ prompt
 
-        # TEMP: ยืนยันว่า endpoint นี้ยืนยันตัวด้วย cookie หรือ Bearer (ไม่ log ค่าจริง)
-        if not getattr(ClaudeCodeSessionMonitor, "_dbg_auth", False):
-            ClaudeCodeSessionMonitor._dbg_auth = True
-            auth = flow.request.headers.get("authorization", "")
-            names = sorted({p.strip().partition("=")[0]
-                            for p in _cookie_header(flow).split(";") if p.strip()})
-            print(f"[claude-session][debug] auth={auth.split(' ', 1)[0] or '(none)'} "
-                  f"cookie names={names}")
-
+        cse   = mt.group(1)
         email = current_email(flow)
-        model = _MODEL_BY_SESS.get(_session_key(flow), "unknown")
         if not _should_log(email):
-            print(f"[claude-session] SKIP (filter) | {mt.group(1)} | email={email or '(none)'}")
+            print(f"[claude-session] SKIP (filter) | {cse} | email={email or '(none)'}")
             return
 
         ip = _client_ip(flow)
-        log = {
+        base = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
             "client":                "claude-desktop",
@@ -1046,7 +1081,7 @@ class ClaudeCodeSessionMonitor:
             "anon_id":               _anon_key(flow),
             "client_ip":             ip,
             "machine_name":          ip,
-            "model":                 model,
+            "model":                 "unknown",
             "prompt":                prompt,
             "prompt_chars":          len(prompt),
             "response_chars":        0,
@@ -1058,20 +1093,103 @@ class ClaudeCodeSessionMonitor:
             "cost_usd":              0.0,
             **_device_info(email),
         }
-        _write_local(log)
-        threading.Thread(target=_send_log, args=(log,), daemon=True).start()
-        print(f"[claude-session] {mt.group(1)} | {model} | prompt={len(prompt)}ch | {email}")
+        _flush_turn(cse)   # prompt ก่อนหน้าของ session นี้ยังไม่ได้ result → log แบบ 0 ไปก่อน
+        timer = threading.Timer(TURN_TIMEOUT_S, _flush_turn, args=(cse,))
+        timer.daemon = True
+        with _TURN_LOCK:
+            _PENDING_TURN[cse] = {"base": base, "resp_chars": 0, "timer": timer,
+                                  "model": _MODEL_BY_SESS.get(_session_key(flow), "")}
+        timer.start()
+        print(f"[claude-session] {cse} | prompt={len(prompt)}ch | {email} | waiting for result")
+
+    # ── ขาลง: SSE stream ─────────────────────────────────────────────────────
+    def responseheaders(self, flow: http.HTTPFlow):
+        if "claude.ai" not in flow.request.host or flow.request.method != "GET":
+            return
+        m = _CODE_SESSION_STREAM_RE.match(flow.request.path.split("?", 1)[0])
+        if not m:
+            return
+        cse = m.group(1)
+        enc = flow.response.headers.get("content-encoding", "").lower()
+        dec = zlib.decompressobj(16 + zlib.MAX_WBITS) if "gzip" in enc else None
+        txt = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        state = {"buf": ""}
+
+        def tap(chunk: bytes) -> bytes:
+            try:
+                raw = dec.decompress(chunk) if (dec and chunk) else chunk
+                state["buf"] += txt.decode(raw or b"")
+                *blocks, state["buf"] = state["buf"].split("\n\n")
+                for b in blocks:
+                    self._on_sse(cse, b)
+            except Exception as exc:
+                print(f"[claude-session] WARN stream parse: {type(exc).__name__}: {exc}")
+            return chunk                     # ส่ง bytes เดิมให้ Desktop เสมอ
+        flow.response.stream = tap           # ไม่ buffer — stream เปิดค้างตลอด session
+
+    def _on_sse(self, cse: str, block: str):
+        data = "".join(l[6:] for l in block.split("\n") if l.startswith("data: "))
+        if not data:
+            return
+        try:
+            d = json.loads(data)
+        except Exception:
+            return
+        pl = d.get("payload") if isinstance(d, dict) else None
+        if not isinstance(pl, dict):
+            return
+        ptype = pl.get("type")
+
+        if ptype == "result":
+            eid = str(d.get("event_id") or pl.get("uuid") or "")
+            if eid and eid in _LOGGED_RESULTS:
+                return                       # replay หลัง reconnect / เปิดหลายหน้าต่าง
+            if eid:
+                _LOGGED_RESULTS.add(eid)
+            _flush_turn(cse, pl)
+            return
+
+        # model: จาก stream_event message_start หรือ assistant message
+        ev  = pl.get("event") if isinstance(pl.get("event"), dict) else {}
+        msg = pl.get("message") if isinstance(pl.get("message"), dict) else {}
+        model = (ev.get("message") or {}).get("model") or msg.get("model") or ""
+        add = 0
+        if ptype == "assistant" and isinstance(msg.get("content"), list):
+            add = sum(len(b.get("text", "")) for b in msg["content"]
+                      if isinstance(b, dict) and b.get("type") == "text")
+        if model or add:
+            with _TURN_LOCK:
+                t = _PENDING_TURN.get(cse)
+                if t:
+                    if model:
+                        t["model"] = model
+                    t["resp_chars"] += add
+
+
+# claude.ai แชตแบบใหม่ (Connect-RPC + protobuf) — ทยอย rollout แทน /completion
+_CONV_RPC_RE = re.compile(r"^/claudeai-rpc/anthropic\.bard\.api\.[^/]+\.ConversationService/"
+                          r"(PerformAction|PrepareSend|StreamTimeline)$")
 
 
 class CodeSessionStreamDebug:
-    """TEMP (B1): ดูว่าคำตอบของ cloud session ไหลกลับมาทางไหน และมี usage/model ไหม
-    เขียนลง log/code_session_debug.jsonl — ลบออกเมื่อทำ B2–B5 เสร็จ"""
+    """TEMP: เก็บ request/response ของแชตแบบใหม่ (ConversationService RPC, protobuf)
+    ลง log/code_session_debug.jsonl เพื่อออกแบบตัวถอดเมื่อ rollout มาถึง
+    (/v1/code/sessions ย้ายไป ClaudeCodeSessionMonitor แล้ว — ห้าม tap ซ้ำ เพราะ
+    flow.response.stream ตั้งได้ตัวเดียว) — ลบออกเมื่อทำตัวดัก RPC เสร็จ"""
     FILE  = LOG_DIR / "code_session_debug.jsonl"
     LIMIT = 50 * 1024 * 1024
 
-    def _ok(self, flow) -> bool:
+    @staticmethod
+    def _rpc(flow) -> bool:
         return "claude.ai" in flow.request.host and \
-               flow.request.path.startswith("/v1/code/sessions/")
+               bool(_CONV_RPC_RE.match(flow.request.path.split("?", 1)[0]))
+
+    def _ok(self, flow) -> bool:
+        return self._rpc(flow)
+
+    @staticmethod
+    def _now() -> int:
+        return int(datetime.now().timestamp() * 1000)
 
     def _write(self, entry: dict):
         try:
@@ -1082,20 +1200,55 @@ class CodeSessionStreamDebug:
         except Exception:
             pass
 
+    def request(self, flow: http.HTTPFlow):
+        # body ขาออกของ RPC (protobuf) — เก็บ base64 เต็มก้อน เพื่อถอด field ทีหลัง
+        if not self._rpc(flow):
+            return
+        self._write({"ts": self._now(), "event": "rpc_req",
+                     "path": flow.request.path.split("?", 1)[0],
+                     "ct": flow.request.headers.get("content-type", ""),
+                     "connect_enc": flow.request.headers.get("connect-content-encoding", ""),
+                     "b64": base64.b64encode(
+                         (flow.request.get_content(strict=False) or b"")[:200000]).decode()})
+
     def responseheaders(self, flow: http.HTTPFlow):
-        if not self._ok(flow) or flow.request.method == "POST":
+        if not self._ok(flow):
             return
         p, ct = flow.request.path, flow.response.headers.get("content-type", "")
-        self._write({"ts": int(datetime.now().timestamp() * 1000), "event": "resp_headers",
+        enc = flow.response.headers.get("content-encoding", "").lower()
+        self._write({"ts": self._now(), "event": "resp_headers",
                      "method": flow.request.method, "path": p,
-                     "status": flow.response.status_code, "ct": ct})
-        if "event-stream" in ct or "stream" in ct or "ndjson" in ct:
+                     "status": flow.response.status_code, "ct": ct, "enc": enc,
+                     "connect_enc": flow.response.headers.get("connect-content-encoding", "")})
+        if "event-stream" in ct or "stream" in ct or "ndjson" in ct or "connect+" in ct:
+            # HTTP gzip ต้องถอดเองทีละ chunk (stream ไม่ผ่านตัวถอดของ mitmproxy)
+            dec = zlib.decompressobj(16 + zlib.MAX_WBITS) if "gzip" in enc else None
+            binary = "proto" in ct
+
             def tap(chunk: bytes) -> bytes:
                 if chunk:
-                    self._write({"ts": int(datetime.now().timestamp() * 1000), "event": "chunk",
-                                 "path": p, "data": chunk[:20000].decode("utf-8", "replace")})
-                return chunk
-            flow.response.stream = tap   # ส่งต่อทันที ไม่ buffer — ไม่กระทบ Desktop
+                    try:
+                        raw = dec.decompress(chunk) if dec else chunk
+                    except Exception:
+                        raw = chunk
+                    entry = {"ts": self._now(), "event": "chunk", "path": p}
+                    if binary:
+                        entry["b64"] = base64.b64encode(raw[:200000]).decode()
+                    else:
+                        entry["data"] = raw[:20000].decode("utf-8", "replace")
+                    self._write(entry)
+                return chunk          # ส่ง bytes เดิมต่อให้ client เสมอ
+            flow.response.stream = tap   # ส่งต่อทันที ไม่ buffer — ไม่กระทบ Desktop/เว็บ
+
+    def response(self, flow: http.HTTPFlow):
+        # RPC unary (application/proto) — body ที่ไม่ใช่ stream
+        if not self._ok(flow) or flow.response.stream:
+            return
+        self._write({"ts": self._now(), "event": "rpc_resp", "path": flow.request.path,
+                     "ct": flow.response.headers.get("content-type", ""),
+                     "status": flow.response.status_code,
+                     "b64": base64.b64encode(
+                         (flow.response.get_content(strict=False) or b"")[:200000]).decode()})
 
     def websocket_message(self, flow: http.HTTPFlow):
         if not self._ok(flow):
@@ -1841,7 +1994,7 @@ addons = [
     ClaudeAPIMonitor(),            # api.anthropic.com (API key / Claude Code CLI & VSCode)
     ClaudeDesktopMonitor(),        # claude.ai chat completion (Desktop app / browser)
     ClaudeCodeSessionMonitor(),    # claude.ai/v1/code/sessions/*/events — Desktop cloud session
-    CodeSessionStreamDebug(),      # TEMP (B1): ขาลงของ cloud session → code_session_debug.jsonl
+    CodeSessionStreamDebug(),      # TEMP: ConversationService RPC (แชตแบบใหม่) → code_session_debug.jsonl
     ClaudeDesktopDiscovery(),      # log other claude.ai POSTs for debugging
     ClaudeBridgeMonitor(),         # bridge.claudeusercontent.com — Claude Code OAuth sessions
     ClaudeBridgeDiscovery(),       # log unknown bridge WS frames for debugging
