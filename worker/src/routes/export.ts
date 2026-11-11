@@ -2,7 +2,7 @@ import type { Env, Filters, ApiLog } from '../types';
 import { todayBkk } from '../lib/date';
 import { fetchExportRows } from '../db/queries';
 import { buildXlsx, S, type XRow, type XSheet } from '../lib/xlsx';
-import { fmtBkk } from '../lib/format';
+import { fmtBkk, usageUnavailable } from '../lib/format';
 
 export async function handleExport(url: URL, env: Env): Promise<Response> {
 	const todayStr = todayBkk();
@@ -128,23 +128,27 @@ function buildLogSheet(logs: ApiLog[]): XSheet {
 		'total_tokens','cost_usd',
 	].map(l => ({ v: l, s: S.COL_HDR }));
 
-	const dataRows: XRow[] = logs.map(r => [
-		{ v: fmtBkk(r.ts) },
-		{ v: r.client },
-		{ v: r.account_email },
-		{ v: r.client_ip },
-		{ v: r.machine_name },
-		{ v: r.model },
-		{ v: r.prompt, s: S.WRAP },
-		n(r.prompt_chars),
-		n(r.response_chars),
-		n(r.input_tokens),
-		n(r.output_tokens),
-		n(r.cache_creation_tokens),
-		n(r.cache_read_tokens),
-		n(r.total_tokens),
-		$(r.cost_usd),
-	]);
+	const NA: XRow[number] = { v: '—' };   // claude.ai แชตไม่ส่ง usage — ไม่มีข้อมูล (ไม่ใช่ 0)
+	const dataRows: XRow[] = logs.map(r => {
+		const na = usageUnavailable(r);
+		return [
+			{ v: fmtBkk(r.ts) },
+			{ v: r.client },
+			{ v: r.account_email },
+			{ v: r.client_ip },
+			{ v: r.machine_name },
+			{ v: r.model },
+			{ v: r.prompt, s: S.WRAP },
+			n(r.prompt_chars),
+			n(r.response_chars),
+			na ? NA : n(r.input_tokens),
+			na ? NA : n(r.output_tokens),
+			na ? NA : n(r.cache_creation_tokens),
+			na ? NA : n(r.cache_read_tokens),
+			na ? NA : n(r.total_tokens),
+			na ? NA : $(r.cost_usd),
+		];
+	});
 
 	return {
 		name: 'Log Detail',

@@ -15,6 +15,28 @@ export function num(n: number | null | undefined, dec = 0): string {
 	return (n ?? 0).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 
+/** claude.ai แชต (/completion) ไม่ส่ง usage กลับมาให้ client — แถวพวกนี้ token/cost = 0
+ *  ไม่ใช่ "ฟรี" แต่ "ไม่มีข้อมูล" จึงแสดง "—" แทน (แถว Desktop cloud session ที่มี usage
+ *  จริงจะมี total_tokens > 0 จึงแสดงตัวเลขตามปกติ) */
+const NO_USAGE_CLIENTS = new Set(['claude-web', 'claude-desktop']);
+export const NO_USAGE_TITLE = 'claude.ai ไม่ส่งจำนวน token กลับมา — ไม่มีข้อมูล';
+
+export function usageUnavailable(r: { client: string; total_tokens: number | null | undefined }): boolean {
+	return NO_USAGE_CLIENTS.has(r.client) && !r.total_tokens;
+}
+
+/** ตัวเลข token/cost ของแถว — "—" ถ้าแถวนั้นไม่มีข้อมูล usage */
+export function usageNum(
+	r: { client: string; total_tokens: number | null | undefined },
+	n: number | null | undefined,
+	dec = 0,
+	prefix = '',
+): string {
+	return usageUnavailable(r)
+		? `<span class="na" title="${NO_USAGE_TITLE}" style="color:var(--ink-3)">—</span>`
+		: `${prefix}${num(n, dec)}`;
+}
+
 export function fmtBkk(ms: number): string {
 	return new Date(ms).toLocaleString('en-GB', {
 		timeZone: 'Asia/Bangkok',

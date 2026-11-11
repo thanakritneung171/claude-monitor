@@ -106,6 +106,18 @@ export function normalizeClient(raw: string): string {
 
 ---
 
+## Desktop vs web บน claude.ai — `_claude_ai_client()`
+
+endpoint ของ claude.ai (`/completion`, `/v1/code/sessions`) ใช้ร่วมกันทั้ง Claude Desktop และ browser จึงแยกด้วย User-Agent:
+
+- UA มี `Electron/` หรือ `Claude/<version>` → `claude-desktop`
+- อื่นๆ (Chrome / Edge / Firefox) → `claude-web`
+
+proxy print `[claude-client] <client> <- UA: ...` ครั้งแรกที่เจอแต่ละ UA ไว้ตรวจว่าแยกถูก
+ข้อมูลก่อนวันที่ 2026-11-11 แยกย้อนหลังไม่ได้ (ไม่ได้เก็บ UA) — แชต web เก่าจึงยังเป็น `claude-desktop`
+
+---
+
 ## Quick reference — แต่ละ client เกิดจากการใช้งานอะไร
 
 | Client | สถานการณ์การใช้งานจริง |
@@ -113,7 +125,8 @@ export function normalizeClient(raw: string): string {
 | `claude-code-cli` | รัน `claude` CLI ใน terminal |
 | `claude-code-vscode` | ใช้ Claude Code extension ใน VSCode |
 | `claude-desktop-code` | เปิด Claude Desktop แล้วใช้แท็บ "Code" |
-| `claude-desktop` | Chat ปกติใน Claude Desktop / claude.ai web และ Desktop cloud session (`/v1/code/sessions/cse_*/events` — มีแค่ prompt, token/cost = 0) |
+| `claude-desktop` | Chat ปกติใน Claude Desktop (ไม่มี token — แสดง "—") และ Desktop cloud session (`/v1/code/sessions`, มี token/cost จริงจาก `events/stream`) — แยกจาก web ด้วย UA ที่มี `Electron/` |
+| `claude-web` | Chat บน claude.ai ผ่าน browser (และ cloud session บนเว็บ) — endpoint เดียวกับ Desktop แต่ UA เป็น browser; แชตไม่มี token — แสดง "—" |
 | `claude-desktop-cowork` | ใช้ Cowork tools (`mcp__cowork__*`) ใน Desktop |
 | `browser-extension` | Claude Chrome extension |
 | `api` | เรียก `api.anthropic.com` ตรงๆ ด้วย SDK / curl / โค้ดเอง |

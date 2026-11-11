@@ -21,8 +21,11 @@
 | Claude Code CLI (API key) | `api.anthropic.com/v1/messages` | `claude-code-cli` |
 | Claude Code CLI (OAuth) | `bridge.claudeusercontent.com` WebSocket | `claude-code-cli` |
 | Claude Code VSCode | `api.anthropic.com/v1/messages` | `claude-code-vscode` |
-| Claude Desktop chat | `claude.ai/.../chat_conversations/.../completion` | `claude-desktop` |
-| Claude.ai web chat | เหมือน Desktop chat | `claude-desktop` |
+| Claude Desktop chat | `claude.ai/.../chat_conversations/.../completion` (UA มี Electron) | `claude-desktop` |
+| Claude.ai web chat | endpoint เดียวกับ Desktop chat (UA เป็น browser) | `claude-web` |
+| Desktop / web cloud session | `claude.ai/v1/code/sessions/cse_*/events` + `events/stream` | `claude-desktop` / `claude-web` |
+
+> แชตผ่าน `/completion` (Desktop chat และ web) ไม่มี token/cost — claude.ai ไม่ส่ง usage กลับมาให้ client dashboard จึงแสดง "—" แทน 0
 | **Cowork** (Desktop) | `api.anthropic.com/v1/messages?beta=true` | `claude-desktop-cowork` |
 | **Code tab** (Desktop) | `api.anthropic.com/v1/messages?beta=true` | `claude-desktop-code` |
 | Claude API SDK ใดก็ตาม | `api.anthropic.com/v1/messages` | `api` |

@@ -1,5 +1,5 @@
 import type { ApiLog, Filters, SessionUser } from '../types';
-import { esc, num, fmtBkkParts } from '../lib/format';
+import { esc, num, fmtBkkParts, usageNum } from '../lib/format';
 import { modelBadge, clientBadge, buildColorMap, MODEL_PASTEL, CLIENT_DARK, modelLabel, normalizeClient } from '../lib/badge';
 import { displayAccount } from '../lib/account';
 import { renderLayout } from './layout';
@@ -98,12 +98,12 @@ function renderRows(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap: M
 			<td class="mono-sm">${esc(r.mac_address || '—')}</td>
 			<td>${anonIdDisplay}</td>
 			<td class="prompt-cell">${truncate(r.prompt, 80)}</td>
-			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.output_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.cache_creation_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.cache_read_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.total_tokens)}</span></td>
-			<td class="cost-cell">$${num(r.cost_usd, 5)}</td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.input_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.output_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.cache_creation_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.cache_read_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.total_tokens)}</span></td>
+			<td class="cost-cell">${usageNum(r, r.cost_usd, 5, '$')}</td>
 		</tr>`;
 	}).join('');
 }

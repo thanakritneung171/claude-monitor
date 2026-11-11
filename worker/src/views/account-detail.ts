@@ -5,7 +5,7 @@ import clientJs from './account-detail.client.js';
 import type { AccountDetailData } from '../db/queries';
 import type { ApiLog, SessionUser } from '../types';
 import { renderLayout } from './layout';
-import { esc, num, fmtBkk, fmtBkkParts } from '../lib/format';
+import { esc, num, fmtBkk, fmtBkkParts, usageNum } from '../lib/format';
 import { modelBadge, clientBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
 import { avatarColor, shadeHex, initials, emailDomain, accountStatus, relativeTimeTh, compactNum } from '../lib/account';
 import { todayBkk } from '../lib/date';
@@ -152,9 +152,9 @@ function recentRowsHtml(rows: ApiLog[], mColorMap: Map<string, string>, cColorMa
 			<td>${clientBadge(r.client, cColorMap)}</td>
 			<td>${modelBadge(r.model, mColorMap)}</td>
 			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div></td>
-			<td><span class="mono">${num(r.total_tokens)}</span></td>
-			<td><span class="mono">$${num(r.cost_usd, 5)}</span></td>
-			<td class="cost">$${num(r.cost_usd, 5)}</td>
+			<td><span class="mono">${usageNum(r, r.total_tokens)}</span></td>
+			<td><span class="mono">${usageNum(r, r.cost_usd, 5, '$')}</span></td>
+			<td class="cost">${usageNum(r, r.cost_usd, 5, '$')}</td>
 		</tr>`;
 	}).join('');
 }

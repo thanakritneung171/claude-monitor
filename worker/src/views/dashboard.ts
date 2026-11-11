@@ -3,7 +3,7 @@ import css from './dashboard.css';
 import clientJs from './dashboard.client.js';
 
 import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, SessionUser } from '../types';
-import { esc, num, fmtBkkParts } from '../lib/format';
+import { esc, num, fmtBkkParts, usageNum } from '../lib/format';
 import { modelBadge, clientBadge, accountBadge, modelLabel, normalizeClient, buildColorMap, MODEL_PASTEL, CLIENT_DARK } from '../lib/badge';
 import { displayAccount } from '../lib/account';
 import { renderLayout } from './layout';
@@ -136,11 +136,11 @@ function renderLogRows(rows: ApiLog[], mColorMap: Map<string, string>, cColorMap
 			<td>${accountBadge(r.account_email)}</td>
 			<td class="td-center">${modelBadge(r.model, mColorMap)}</td>
 			<td class="prompt-cell"><div class="truncate">${esc(r.prompt)}</div>${r.prompt.length > 80 ? '<span class="more">เปิดดูเต็ม →</span>' : ''}</td>
-			<td class="num-cell"><span class="mono">${num(r.input_tokens)}</span></td>
-			<td class="num-cell"><span class="mono">${num(r.output_tokens)}</span></td>
-			<td class="num-cell cw"><span class="mono">${num(r.cache_creation_tokens)}</span></td>
-			<td class="num-cell cr"><span class="mono">${num(r.cache_read_tokens)}</span></td>
-			<td class="cost-cell">$${num(r.cost_usd, 5)}</td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.input_tokens)}</span></td>
+			<td class="num-cell"><span class="mono">${usageNum(r, r.output_tokens)}</span></td>
+			<td class="num-cell cw"><span class="mono">${usageNum(r, r.cache_creation_tokens)}</span></td>
+			<td class="num-cell cr"><span class="mono">${usageNum(r, r.cache_read_tokens)}</span></td>
+			<td class="cost-cell">${usageNum(r, r.cost_usd, 5, '$')}</td>
 		</tr>`;
 	}).join('');
 }
@@ -155,7 +155,7 @@ function renderLogCards(rows: ApiLog[], mColorMap: Map<string, string>, cColorMa
 		return `<div class="log-card" data-full="${fullPrompt}">
 			<div class="top">
 				<span class="time">${esc(time)} <span class="date" style="display:inline">${esc(date)}</span></span>
-				<span class="cost-big">$${num(r.cost_usd, 5)}</span>
+				<span class="cost-big">${usageNum(r, r.cost_usd, 5, '$')}</span>
 			</div>
 			<div class="prompt">${esc(r.prompt)}</div>
 			<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
@@ -164,9 +164,9 @@ function renderLogCards(rows: ApiLog[], mColorMap: Map<string, string>, cColorMa
 			</div>
 			<div class="meta-grid">
 				<div>Account<strong style="font-size:11px;">${esc(displayAccount(r.account_email))}</strong></div>
-				<div>Total tokens<strong>${num(r.total_tokens)}</strong></div>
-				<div>Input / Output<strong>${num(r.input_tokens)} / ${num(r.output_tokens)}</strong></div>
-				<div>Cache W / R<strong>${num(r.cache_creation_tokens)} / ${num(r.cache_read_tokens)}</strong></div>
+				<div>Total tokens<strong>${usageNum(r, r.total_tokens)}</strong></div>
+				<div>Input / Output<strong>${usageNum(r, r.input_tokens)} / ${usageNum(r, r.output_tokens)}</strong></div>
+				<div>Cache W / R<strong>${usageNum(r, r.cache_creation_tokens)} / ${usageNum(r, r.cache_read_tokens)}</strong></div>
 			</div>
 		</div>`;
 	}).join('');

@@ -33,6 +33,7 @@ export const CLIENT_DARK: string[] = [
 /** สีกำหนดตายตัวของ client (มาก่อนสีจาก hash) — ใช้ทั้ง badge และกราฟ By Client */
 export const CLIENT_FIXED: Record<string, string> = {
 	'claude-desktop': '#C2410C', // ส้มเข้ม (orange-700) + ตัวอักษรขาว
+	'claude-web':     '#0E7490', // ฟ้าอมเขียวเข้ม (cyan-700) + ตัวอักษรขาว
 };
 
 /** hash ชื่อ → index คงที่ ทุกหน้าชื่อเดียวกันได้สีเดียวกันเสมอ */

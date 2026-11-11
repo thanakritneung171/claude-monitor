@@ -858,11 +858,30 @@ class ClaudeAPIMonitor:
               f"in={inp:,} out={out:,} | ${log['cost_usd']:.5f} | {_log_path().name}")
 
 
-# ── mitmproxy addon: claude.ai Desktop ───────────────────────────────────────
+# ── แยก Desktop / web บน claude.ai ──────────────────────────────────────────
+# /completion และ /v1/code/sessions ใช้ร่วมกันทั้ง Claude Desktop (Electron) และ browser
+# แยกจาก User-Agent: Desktop มี "Electron/" และ "Claude/<ver>" ส่วน browser ไม่มี
+_SEEN_CLAUDE_AI_UA: set[str] = set()   # UA ที่ print แล้ว (ไว้ตรวจว่าแยกถูก)
+
+
+def _claude_ai_client(flow) -> str:
+    ua = flow.request.headers.get("user-agent", "")
+    low = ua.lower()
+    client = "claude-desktop" if ("electron/" in low or re.search(r"\bclaude/\d", low)) \
+             else "claude-web"
+    if ua and ua not in _SEEN_CLAUDE_AI_UA and len(_SEEN_CLAUDE_AI_UA) < 50:
+        _SEEN_CLAUDE_AI_UA.add(ua)
+        print(f"[claude-client] {client} <- UA: {ua[:160]}")
+    return client
+
+
+# ── mitmproxy addon: claude.ai chat (Desktop + web) ──────────────────────────
 class ClaudeDesktopMonitor:
     """
     Intercepts claude.ai /api/organizations/.../chat_conversations/.../completion
-    This is the endpoint Claude.ai Desktop app uses for chat.
+    ใช้ทั้ง Claude Desktop และ claude.ai บน browser — tag เป็น claude-desktop /
+    claude-web ตาม UA (_claude_ai_client) SSE ของ endpoint นี้ไม่มี usage
+    (ยืนยันจาก completion_sse_debug 2026-11-11) token/cost จึงเป็น 0 เสมอ
     """
 
     def response(self, flow: http.HTTPFlow):
@@ -938,10 +957,11 @@ class ClaudeDesktopMonitor:
             return
 
         ip = _client_ip(flow)
+        client = _claude_ai_client(flow)
         log = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
-            "client":                "claude-desktop",
+            "client":                client,
             "account_email":         email,
             "anon_id":               _anon_key(flow),
             "client_ip":             ip,
@@ -962,7 +982,7 @@ class ClaudeDesktopMonitor:
         _write_local(log)
         threading.Thread(target=_send_log, args=(log,), daemon=True).start()
 
-        print(f"[claude-desktop] {model} | prompt={len(prompt)}ch | "
+        print(f"[{client}] {model} | prompt={len(prompt)}ch | "
               f"in={inp:,} out={out:,} | ${log['cost_usd']:.5f} | {_log_path().name}")
 
 
@@ -1036,7 +1056,8 @@ def _flush_turn(cse: str, result: dict | None = None) -> None:
 
 
 class ClaudeCodeSessionMonitor:
-    """Log Claude Desktop cloud session เป็น client 'claude-desktop' (prompt + model/token/cost)."""
+    """Log cloud session (prompt + model/token/cost) — tag เป็น claude-desktop หรือ
+    claude-web ตาม UA (claude.ai/code บน browser ใช้ endpoint เดียวกัน)"""
 
     # ── ขาออก: prompt ────────────────────────────────────────────────────────
     def response(self, flow: http.HTTPFlow):
@@ -1076,7 +1097,7 @@ class ClaudeCodeSessionMonitor:
         base = {
             "id":                    str(uuid.uuid4()),
             "ts":                    int(datetime.now().timestamp() * 1000),
-            "client":                "claude-desktop",
+            "client":                _claude_ai_client(flow),
             "account_email":         email,
             "anon_id":               _anon_key(flow),
             "client_ip":             ip,

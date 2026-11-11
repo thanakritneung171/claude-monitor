@@ -13,6 +13,7 @@ const CLIENT_COLORS: Record<string, string> = {
 	'claude-code-cli':       '#2563EB',
 	'claude-code-vscode':    '#7C3AED',
 	'claude-desktop':        '#C2410C',
+	'claude-web':            '#0E7490',
 	'claude-desktop-code':   '#D97706',
 	'claude-desktop-cowork': '#059669',
 	'api':                   '#6B7280',
