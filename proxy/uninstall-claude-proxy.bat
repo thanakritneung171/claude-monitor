@@ -68,6 +68,27 @@ if ($currentOverride) {
     $clearedBypass = $true
 }
 
+# Turn the system proxy back off (install-claude-proxy sets ProxyEnable=1) --
+# but only while it still points at OUR proxy, so a proxy configured by the
+# user / IT is never disabled by mistake.
+$ourProxyHost     = "10.10.84.1:8081"
+$disabledSysProxy = $false
+$inet             = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+if ($inet.ProxyEnable -eq 1 -and $inet.ProxyServer -eq $ourProxyHost) {
+    Set-ItemProperty -Path $regPath -Name ProxyEnable -Value 0 -Type DWord
+    $disabledSysProxy = $true
+}
+
+# Tell running WinINET / Chromium clients that proxy settings changed.
+try {
+    Add-Type -Namespace SdbAi -Name WinInet -ErrorAction Stop -MemberDefinition @'
+[DllImport("wininet.dll", SetLastError = true)]
+public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+'@
+    [void][SdbAi.WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0)  # INTERNET_OPTION_SETTINGS_CHANGED
+    [void][SdbAi.WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0)  # INTERNET_OPTION_REFRESH
+} catch {}
+
 Write-Host ""
 Write-Host "  Claude proxy config removed" -ForegroundColor Green
 Write-Host "  -------------------------------------" -ForegroundColor DarkGray
@@ -86,6 +107,13 @@ if ($clearedBypass) {
     Write-Host "  WinINET ProxyOverride:      cleared (was: $currentOverride)"
 } else {
     Write-Host "  WinINET ProxyOverride:      already empty"
+}
+if ($disabledSysProxy) {
+    Write-Host "  System proxy (WinINET):     turned OFF (was $ourProxyHost)"
+} elseif ($inet.ProxyEnable -eq 1) {
+    Write-Host "  System proxy (WinINET):     left ON - points at '$($inet.ProxyServer)', not ours"
+} else {
+    Write-Host "  System proxy (WinINET):     already off"
 }
 Write-Host ""
 Write-Host "  Fully QUIT Claude Desktop and reopen for env changes to take effect." -ForegroundColor Yellow
