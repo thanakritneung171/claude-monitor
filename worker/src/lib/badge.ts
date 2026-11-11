@@ -30,6 +30,11 @@ export const CLIENT_DARK: string[] = [
 	'#64748B', // slate    neutral
 ];
 
+/** สีกำหนดตายตัวของ client (มาก่อนสีจาก hash) — ใช้ทั้ง badge และกราฟ By Client */
+export const CLIENT_FIXED: Record<string, string> = {
+	'claude-desktop': '#C2410C', // ส้มเข้ม (orange-700) + ตัวอักษรขาว
+};
+
 /** hash ชื่อ → index คงที่ ทุกหน้าชื่อเดียวกันได้สีเดียวกันเสมอ */
 function hashIndex(name: string, len: number): number {
 	let h = 5381;
@@ -43,7 +48,8 @@ function hashIndex(name: string, len: number): number {
 export function buildColorMap(names: string[], palette: string[]): Map<string, string> {
 	const map = new Map<string, string>();
 	for (const name of new Set(names)) {
-		map.set(name, palette[hashIndex(name, palette.length)]);
+		const fixed = palette === CLIENT_DARK ? CLIENT_FIXED[name] : undefined;
+		map.set(name, fixed ?? palette[hashIndex(name, palette.length)]);
 	}
 	return map;
 }
@@ -58,14 +64,16 @@ export function modelBadge(model: string, colorMap?: Map<string, string>): strin
 	return `<span class="chip model" style="background:${bg};color:#1F2937">${esc(label)}</span>`;
 }
 
+/** เดิมรวม claude-code-cli + claude-desktop เป็น label เดียว — เลิกรวมแล้ว เพราะ addon
+ *  tag claude-desktop จาก endpoint ที่ชัดเจน (/completion, /v1/code/sessions/.../events)
+ *  คง function ไว้ให้ views ที่ import อยู่ไม่ต้องแก้ */
 export function normalizeClient(raw: string): string {
-	if (raw === 'claude-code-cli' || raw === 'claude-desktop') return 'claude-code-cli, claude-desktop';
 	return raw;
 }
 
 export function clientBadge(client: string, colorMap?: Map<string, string>): string {
 	const n = normalizeClient(client);
-	const bg = colorMap?.get(n) ?? CLIENT_DARK[hashIndex(n, CLIENT_DARK.length)];
+	const bg = CLIENT_FIXED[n] ?? colorMap?.get(n) ?? CLIENT_DARK[hashIndex(n, CLIENT_DARK.length)];
 	const label = n.includes(', ')
 		? n.split(', ').map(p => esc(p)).join('<br>')
 		: esc(n);

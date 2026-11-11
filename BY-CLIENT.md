@@ -88,19 +88,21 @@ _CLIENT_MAP = {
 
 ## การแสดงผลใน Dashboard — `normalizeClient()`
 
-ที่ [worker/src/lib/badge.ts:60-63](worker/src/lib/badge.ts#L60-L63):
+ที่ [worker/src/lib/badge.ts](worker/src/lib/badge.ts):
 
 ```typescript
 export function normalizeClient(raw: string): string {
-    if (raw === 'claude-code-cli' || raw === 'claude-desktop')
-        return 'claude-code-cli, claude-desktop';
     return raw;
 }
 ```
 
-→ Badge บนหน้า dashboard จะ **รวม** `claude-code-cli` กับ `claude-desktop` เป็น label เดียว `claude-code-cli, claude-desktop` (แสดง 2 บรรทัด)
+→ **เลิกรวมแล้ว** — `claude-code-cli` กับ `claude-desktop` แสดงเป็น badge / แท่งกราฟ / ตัวเลือก dropdown แยกกัน
 
-> **ค่าใน DB ยังเก็บแยกเหมือนเดิม** — รวมเฉพาะตอน render badge เพราะ flow บางตัวแยกสองตัวนี้ออกจากกันไม่ได้แน่ชัด
+เดิมเคยรวมเป็น label เดียว `claude-code-cli, claude-desktop` เพราะ flow บางตัวแยกสองตัวนี้ออกจากกันไม่ได้แน่ชัด ปัจจุบัน addon tag `claude-desktop` จาก endpoint ที่ชัดเจนเท่านั้น (`claude.ai/.../completion` และ `claude.ai/v1/code/sessions/cse_*/events`) จึงแยกได้
+
+- `claude-desktop` มีสีตายตัว **ส้มเข้ม `#C2410C` ตัวอักษรขาว** (`CLIENT_FIXED` ใน badge.ts) — client อื่นยังใช้สีจาก hash ของชื่อ
+- ค่า filter แบบเก่า `client=claude-code-cli, claude-desktop` ยังรองรับเป็น alias (ดึงทั้งสอง client) ใน `filters.ts` / `queries.ts` เพื่อไม่ให้ลิงก์เก่าเสีย
+- ค่าใน DB เก็บแยกมาตั้งแต่แรก — ไม่ต้อง migrate
 
 ---
 
@@ -111,7 +113,7 @@ export function normalizeClient(raw: string): string {
 | `claude-code-cli` | รัน `claude` CLI ใน terminal |
 | `claude-code-vscode` | ใช้ Claude Code extension ใน VSCode |
 | `claude-desktop-code` | เปิด Claude Desktop แล้วใช้แท็บ "Code" |
-| `claude-desktop` | Chat ปกติใน Claude Desktop |
+| `claude-desktop` | Chat ปกติใน Claude Desktop / claude.ai web และ Desktop cloud session (`/v1/code/sessions/cse_*/events` — มีแค่ prompt, token/cost = 0) |
 | `claude-desktop-cowork` | ใช้ Cowork tools (`mcp__cowork__*`) ใน Desktop |
 | `browser-extension` | Claude Chrome extension |
 | `api` | เรียก `api.anthropic.com` ตรงๆ ด้วย SDK / curl / โค้ดเอง |

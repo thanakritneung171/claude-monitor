@@ -963,6 +963,150 @@ class ClaudeDesktopMonitor:
               f"in={inp:,} out={out:,} | ${log['cost_usd']:.5f} | {_log_path().name}")
 
 
+# ── Claude Desktop cloud session (/v1/code/sessions/cse_*/events) ────────────
+# Desktop v5.x ส่ง prompt บางโหมดเป็น "cloud session": client POST event ไปที่
+# claude.ai/v1/code/sessions/<cse_id>/events แล้ว model รันบน cloud ของ Anthropic
+# จึงไม่มี /v1/messages ผ่าน proxy — เห็นได้แค่ prompt ขาออก (token/cost ยังเป็น 0
+# จนกว่าจะทำ B2–B5 จากผล debug ขาลง)
+_CODE_SESSION_EVENTS_RE = re.compile(r"^/v1/code/sessions/(cse_[A-Za-z0-9]+)/events$")
+_MODEL_BY_SESS: dict[str, str] = {}   # sha256(sessionKey) -> model ล่าสุดที่เห็น (จาก generate_session_title)
+
+
+def _extract_prompt_session_events(body) -> str:
+    """prompt จริงตัวสุดท้ายใน batch events — ข้าม system-reminder (shouldQuery=false),
+    tool result / subagent (parent_tool_use_id) และ control_request"""
+    events = body.get("events") if isinstance(body, dict) else None
+    if not isinstance(events, list):
+        return ""
+    prompt = ""
+    for ev in events:
+        pl = ev.get("payload") if isinstance(ev, dict) else None
+        if not isinstance(pl, dict) or pl.get("type") != "user":
+            continue
+        if pl.get("shouldQuery") is False or pl.get("parent_tool_use_id"):
+            continue
+        msg = pl.get("message")
+        text = _extract_prompt_api([msg]) if isinstance(msg, dict) else ""
+        if text and not text.lstrip().startswith("<system-reminder>"):
+            prompt = text
+    return prompt
+
+
+class ClaudeCodeSessionMonitor:
+    """Log prompt ของ Claude Desktop cloud session เป็น client 'claude-desktop'."""
+
+    def response(self, flow: http.HTTPFlow):
+        if "claude.ai" not in flow.request.host or flow.request.method != "POST":
+            return
+        path = flow.request.path.split("?", 1)[0]
+
+        # model มากับ generate_session_title (ข้อความแรกของ session) — จำไว้ต่อ login
+        if path.endswith("/dust/generate_session_title"):
+            try:
+                m = json.loads(flow.request.content).get("model") or ""
+            except Exception:
+                m = ""
+            sess = _session_key(flow)
+            if m and sess:
+                _MODEL_BY_SESS[sess] = m
+            return
+
+        mt = _CODE_SESSION_EVENTS_RE.match(path)
+        if not mt or flow.response.status_code >= 400:
+            return
+        try:
+            body = json.loads(flow.request.content)
+        except Exception:
+            return
+        prompt = _extract_prompt_session_events(body)
+        if not prompt:
+            return   # batch ที่มีแต่ control_request / reminder — ไม่ใช่ prompt
+
+        # TEMP: ยืนยันว่า endpoint นี้ยืนยันตัวด้วย cookie หรือ Bearer (ไม่ log ค่าจริง)
+        if not getattr(ClaudeCodeSessionMonitor, "_dbg_auth", False):
+            ClaudeCodeSessionMonitor._dbg_auth = True
+            auth = flow.request.headers.get("authorization", "")
+            names = sorted({p.strip().partition("=")[0]
+                            for p in _cookie_header(flow).split(";") if p.strip()})
+            print(f"[claude-session][debug] auth={auth.split(' ', 1)[0] or '(none)'} "
+                  f"cookie names={names}")
+
+        email = current_email(flow)
+        model = _MODEL_BY_SESS.get(_session_key(flow), "unknown")
+        if not _should_log(email):
+            print(f"[claude-session] SKIP (filter) | {mt.group(1)} | email={email or '(none)'}")
+            return
+
+        ip = _client_ip(flow)
+        log = {
+            "id":                    str(uuid.uuid4()),
+            "ts":                    int(datetime.now().timestamp() * 1000),
+            "client":                "claude-desktop",
+            "account_email":         email,
+            "anon_id":               _anon_key(flow),
+            "client_ip":             ip,
+            "machine_name":          ip,
+            "model":                 model,
+            "prompt":                prompt,
+            "prompt_chars":          len(prompt),
+            "response_chars":        0,
+            "input_tokens":          0,
+            "output_tokens":         0,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens":     0,
+            "total_tokens":          0,
+            "cost_usd":              0.0,
+            **_device_info(email),
+        }
+        _write_local(log)
+        threading.Thread(target=_send_log, args=(log,), daemon=True).start()
+        print(f"[claude-session] {mt.group(1)} | {model} | prompt={len(prompt)}ch | {email}")
+
+
+class CodeSessionStreamDebug:
+    """TEMP (B1): ดูว่าคำตอบของ cloud session ไหลกลับมาทางไหน และมี usage/model ไหม
+    เขียนลง log/code_session_debug.jsonl — ลบออกเมื่อทำ B2–B5 เสร็จ"""
+    FILE  = LOG_DIR / "code_session_debug.jsonl"
+    LIMIT = 50 * 1024 * 1024
+
+    def _ok(self, flow) -> bool:
+        return "claude.ai" in flow.request.host and \
+               flow.request.path.startswith("/v1/code/sessions/")
+
+    def _write(self, entry: dict):
+        try:
+            if self.FILE.exists() and self.FILE.stat().st_size > self.LIMIT:
+                return
+            with open(self.FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+    def responseheaders(self, flow: http.HTTPFlow):
+        if not self._ok(flow) or flow.request.method == "POST":
+            return
+        p, ct = flow.request.path, flow.response.headers.get("content-type", "")
+        self._write({"ts": int(datetime.now().timestamp() * 1000), "event": "resp_headers",
+                     "method": flow.request.method, "path": p,
+                     "status": flow.response.status_code, "ct": ct})
+        if "event-stream" in ct or "stream" in ct or "ndjson" in ct:
+            def tap(chunk: bytes) -> bytes:
+                if chunk:
+                    self._write({"ts": int(datetime.now().timestamp() * 1000), "event": "chunk",
+                                 "path": p, "data": chunk[:20000].decode("utf-8", "replace")})
+                return chunk
+            flow.response.stream = tap   # ส่งต่อทันที ไม่ buffer — ไม่กระทบ Desktop
+
+    def websocket_message(self, flow: http.HTTPFlow):
+        if not self._ok(flow):
+            return
+        msg = flow.websocket.messages[-1]
+        self._write({"ts": int(datetime.now().timestamp() * 1000), "event": "ws",
+                     "path": flow.request.path, "from_client": msg.from_client,
+                     "data": (msg.content[:20000].decode("utf-8", "replace")
+                              if msg.is_text else repr(msg.content[:200]))})
+
+
 # Hosts to scan in discovery — covers Claude.ai web/desktop, Anthropic API,
 # Cowork backend (dust.anthropic.com etc.), and any other anthropic/claude subdomain.
 _DISCOVERY_HOSTS = ("anthropic.com", "claude.ai", "claudeusercontent.com")
@@ -976,7 +1120,9 @@ class ClaudeDesktopDiscovery:
     """
     DISCOVERY_FILE = LOG_DIR / "claude_desktop_discovery.jsonl"
     SKIP_PATHS = {"/api/auth/", "/api/analytics", "/static/", "/favicon",
-                  "/api/event_logging"}
+                  "/api/event_logging", "/api/v2/rum", "/v1/messages/count_tokens"}
+    # path ที่มี session id อยู่กลาง ใช้ endswith แทน startswith
+    SKIP_SUFFIXES = ("/worker/heartbeat", "/client/presence", "/ping")
 
     def response(self, flow: http.HTTPFlow):
         host = flow.request.host
@@ -996,6 +1142,10 @@ class ClaudeDesktopDiscovery:
 
         if any(path.startswith(s) for s in self.SKIP_PATHS):
             return
+        if path_no_query.endswith(self.SKIP_SUFFIXES):
+            return
+        if _CODE_SESSION_EVENTS_RE.match(path_no_query):
+            return   # ClaudeCodeSessionMonitor จัดการแล้ว
 
         ct       = flow.response.headers.get("content-type", "")
         status   = flow.response.status_code
@@ -1690,6 +1840,8 @@ addons = [
     ClaudeSegmentMonitor(),        # a-api.anthropic.com/v1/b — anonymousId/account_uuid → email
     ClaudeAPIMonitor(),            # api.anthropic.com (API key / Claude Code CLI & VSCode)
     ClaudeDesktopMonitor(),        # claude.ai chat completion (Desktop app / browser)
+    ClaudeCodeSessionMonitor(),    # claude.ai/v1/code/sessions/*/events — Desktop cloud session
+    CodeSessionStreamDebug(),      # TEMP (B1): ขาลงของ cloud session → code_session_debug.jsonl
     ClaudeDesktopDiscovery(),      # log other claude.ai POSTs for debugging
     ClaudeBridgeMonitor(),         # bridge.claudeusercontent.com — Claude Code OAuth sessions
     ClaudeBridgeDiscovery(),       # log unknown bridge WS frames for debugging
