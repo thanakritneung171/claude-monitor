@@ -158,13 +158,14 @@ export function renderLogs(d: LogsRenderInput): string {
 .td-center { text-align: center; }
 .filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 16px; }
 .filter-row label, .filter-row .lf { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
-.filter-row input, .filter-row select { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; outline: none; min-width: 130px; }
-.filter-row input:focus, .filter-row select:focus { border-color: var(--accent, #F47948); }
-/* Searchable select (shared template กับ Dashboard) — ปรับขนาดให้เข้ากับ filter row ของหน้านี้ */
+/* ทั้งแถวใช้ขนาดเดียวกับ Dashboard (.select ใน shared.css: สูง 36px, font 16px) */
+.filter-row label input { height: 36px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--bg); color: var(--ink); font-family: inherit; font-size: 16px; font-weight: 500; text-transform: none; letter-spacing: normal; outline: none; min-width: 130px; }
+.filter-row label input:focus { border-color: var(--peach-400); }
+/* Searchable select (shared template กับ Dashboard) — ขนาด/ฟอนต์มาจาก shared.css, แค่ reset uppercase ที่ได้จาก .lf */
 .filter-row .select-wrap { min-width: 170px; }
-.filter-row .ss-btn { height: 34px; font-size: 13px; border-radius: 8px; text-transform: none; letter-spacing: normal; font-weight: 500; }
+.filter-row .ss-btn { text-transform: none; letter-spacing: normal; }
 .filter-row .ss-panel { text-transform: none; letter-spacing: normal; font-weight: 400; }
-.filter-btn { height: 34px; padding: 0 16px; border-radius: 8px; background: var(--accent, #F47948); color: #fff; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
+.filter-btn { height: 36px; padding: 0 16px; border-radius: 9px; background: var(--accent, #F47948); color: #fff; font-family: inherit; font-size: 16px; font-weight: 600; border: none; cursor: pointer; }
 .sz-row { display: flex; gap: 6px; align-items: center; margin-bottom: 14px; }
 .sz-btn { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); font-size: 12px; cursor: pointer; }
 .sz-btn.on { background: var(--accent, #F47948); color: #fff; border-color: var(--accent, #F47948); }
