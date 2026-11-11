@@ -22,7 +22,7 @@ worker/src/
 │   ├── analytics.ts          # GET /analytics (trend chart + Export PDF)
 │   ├── accounts.ts           # GET /accounts
 │   ├── account-detail.ts     # GET /account?identity=<email>
-│   ├── identity.ts           # GET /identity (frozen) + /new-identity (canonical)
+│   ├── account-identity.ts   # GET /account-identity (canonical + IPs) — /new-identity redirect 301
 │   ├── insights.ts           # GET /insights
 │   ├── reports.ts            # GET /reports
 │   ├── monitoring.ts         # GET /monitoring
@@ -33,7 +33,7 @@ worker/src/
 │
 ├── db/
 │   ├── queries.ts            # SQL หลัก (list, count, totals, byModel/Client/Account/Machine)
-│   ├── queries-extra.ts      # SQL ของหน้า analytics/insights/identity ฯลฯ
+│   ├── queries-extra.ts      # SQL ของหน้า analytics/insights ฯลฯ
 │   └── filters.ts            # buildWhere(), normalizeClient()
 │
 ├── lib/
@@ -52,7 +52,8 @@ worker/src/
     ├── shared.css
     ├── dashboard.*           # html/css/client.js/ts
     ├── logs.ts · analytics.* · accounts.* · account-detail.*
-    ├── identity.ts · new-identity.ts
+    ├── account-identity.ts   # Account Identity (email + IPs ที่ map)
+    ├── search-select.client.js # dropdown แบบค้นหาได้ (ใช้ร่วม Dashboard + Logs)
     ├── insights.* · reports.* · monitoring.* · data-sources.*
     ├── settings.* · clear-data.*
     └── image/                # โลโก้ softdebut (png/webp + base64)

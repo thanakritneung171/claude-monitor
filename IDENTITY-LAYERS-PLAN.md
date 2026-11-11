@@ -21,9 +21,9 @@
 >
 > - device/account info (OS/arch/`account_id`/`org_id`) cache **keyed ด้วย email** (จาก metrics endpoint) — `_DEVICE_BY_EMAIL` / `_ACCOUNT_BY_EMAIL`
 > - ตาราง **`ip_identity` + `lookupIdentityByIp` (L3 ยืม email ตาม IP) → ลบทิ้งแล้ว** (migration [`0011_drop_ip_identity.sql`](worker/migrations/0011_drop_ip_identity.sql))
-> - **`email_identity`** (keyed ด้วย email) = canonical identity record (หน้า New Identity)
+> - **`email_identity`** (keyed ด้วย email) = canonical identity record (หน้า Account Identity — เดิมชื่อ New Identity)
 > - `client_ip` ยังเก็บใน `api_logs` แต่ **เป็น audit เท่านั้น — ไม่ใช้ระบุตัวตน**
-> - **`ip_identity_backup`** = snapshot แช่แข็งของดีไซน์เดิม (ยังโชว์ที่หน้า `/identity`)
+> - **`ip_identity_backup`** = snapshot แช่แข็งของดีไซน์เดิม (หน้า `/identity` ถูกลบแล้ว — ตารางยังอยู่ใน DB)
 > - `ClaudeSegmentMonitor` (anonymousId ตาม IP) → **ลบออกจาก addons** (anon_id หมดความจำเป็น)
 >
 > โค้ดจริง: `current_email()` / `_jwt_email()` / `_session_key()` ใน [`proxy/addon.py`](proxy/addon.py)

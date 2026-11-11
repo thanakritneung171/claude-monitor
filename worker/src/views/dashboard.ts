@@ -1,6 +1,7 @@
 import html from './dashboard.html';
 import css from './dashboard.css';
 import clientJs from './dashboard.client.js';
+import searchSelectJs from './search-select.client.js';
 
 import type { ApiLog, Filters, Totals, ByModel, ByClient, ByAccount, SessionUser } from '../types';
 import { esc, num, fmtBkkParts, usageNum } from '../lib/format';
@@ -245,7 +246,7 @@ export function renderDashboard(d: RenderInput): string {
 	});
 
 	const replacements: Record<string, string> = {
-		'{{clientJs}}': clientJs,
+		'{{clientJs}}': searchSelectJs + '\n' + clientJs,
 		'{{periodDailyOn}}':   d.filters.period === 'daily'   ? ' class="on"' : '',
 		'{{periodMonthlyOn}}': d.filters.period === 'monthly' ? ' class="on"' : '',
 		'{{periodYearlyOn}}':  d.filters.period === 'yearly'  ? ' class="on"' : '',

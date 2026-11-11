@@ -362,31 +362,6 @@ export async function insertLog(env: Env, b: Partial<ApiLog>): Promise<void> {
 	).run();
 }
 
-// ─── ip_identity_backup (frozen snapshot) — read-only, powers the /identity page ──
-export interface IdentityListRow {
-	ip: string;
-	email: string;
-	name: string;
-	uuid: string;
-	account_id: string;
-	org_id: string;
-	anon_id: string;
-	updated_ms: number;
-	calls: number;
-}
-
-export async function fetchIdentityBackup(env: Env): Promise<IdentityListRow[]> {
-	const res = await env.DB.prepare(
-		`SELECT b.ip, b.email, b.name, b.uuid, b.account_id, b.org_id, b.anon_id, b.updated_ms,
-		        COUNT(l.id) AS calls
-		   FROM ip_identity_backup b
-		   LEFT JOIN api_logs l ON l.client_ip = b.ip
-		  GROUP BY b.ip
-		  ORDER BY b.updated_ms DESC`
-	).all<IdentityListRow>();
-	return res.results ?? [];
-}
-
 // ─── email_identity — canonical person record (keyed by email) ────────────────
 export interface EmailIdentityInput {
 	email: string;
@@ -453,23 +428,41 @@ export interface EmailIdentityRow {
 	host_arch: string;
 	app_version: string;
 	terminal: string;
-	ips: string;
+	/** IPs ที่ map กับ email นี้ — distinct จาก api_logs.client_ip + seed เดิมใน email_identity.ips */
+	ips: string[];
 	client_types: string;
 	first_seen: number;
 	updated_ms: number;
 	calls: number;
 }
 
+type EmailIdentityDbRow = Omit<EmailIdentityRow, 'ips'> & { log_ips: string | null; seed_ips: string };
+
+function splitIps(csv: string | null | undefined): string[] {
+	return (csv ?? '').split(',').map(x => x.trim()).filter(Boolean);
+}
+
 export async function fetchEmailIdentityList(env: Env): Promise<EmailIdentityRow[]> {
 	const res = await env.DB.prepare(
 		`SELECT e.email, e.name, e.account_id, e.uuid, e.org_id, e.anon_id,
 		        e.os_type, e.os_version, e.host_arch, e.app_version, e.terminal,
-		        e.ips, e.client_types, e.first_seen, e.updated_ms,
-		        COUNT(l.id) AS calls
+		        e.ips AS seed_ips, e.client_types, e.first_seen, e.updated_ms,
+		        COALESCE(c.calls, 0) AS calls,
+		        i.ips AS log_ips
 		   FROM email_identity e
-		   LEFT JOIN api_logs l ON l.account_email = e.email
-		  GROUP BY e.email
+		   LEFT JOIN (SELECT account_email, COUNT(*) AS calls
+		                FROM api_logs
+		               WHERE account_email != ''
+		               GROUP BY account_email) c ON c.account_email = e.email
+		   LEFT JOIN (SELECT account_email, GROUP_CONCAT(client_ip) AS ips
+		                FROM (SELECT DISTINCT account_email, client_ip
+		                        FROM api_logs
+		                       WHERE account_email != '' AND client_ip != '')
+		               GROUP BY account_email) i ON i.account_email = e.email
 		  ORDER BY e.updated_ms DESC`
-	).all<EmailIdentityRow>();
-	return res.results ?? [];
+	).all<EmailIdentityDbRow>();
+	return (res.results ?? []).map(({ log_ips, seed_ips, ...r }) => ({
+		...r,
+		ips: [...new Set([...splitIps(log_ips), ...splitIps(seed_ips)])],
+	}));
 }

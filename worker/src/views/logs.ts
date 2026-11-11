@@ -3,6 +3,7 @@ import { esc, num, fmtBkkParts, usageNum } from '../lib/format';
 import { modelBadge, clientBadge, buildColorMap, MODEL_PASTEL, CLIENT_DARK, modelLabel, normalizeClient } from '../lib/badge';
 import { displayAccount } from '../lib/account';
 import { renderLayout } from './layout';
+import searchSelectJs from './search-select.client.js';
 
 const arrowL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>';
 const arrowR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
@@ -156,9 +157,13 @@ export function renderLogs(d: LogsRenderInput): string {
 .nowrap { white-space: nowrap; }
 .td-center { text-align: center; }
 .filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 16px; }
-.filter-row label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
+.filter-row label, .filter-row .lf { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
 .filter-row input, .filter-row select { height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 13px; outline: none; min-width: 130px; }
 .filter-row input:focus, .filter-row select:focus { border-color: var(--accent, #F47948); }
+/* Searchable select (shared template กับ Dashboard) — ปรับขนาดให้เข้ากับ filter row ของหน้านี้ */
+.filter-row .select-wrap { min-width: 170px; }
+.filter-row .ss-btn { height: 34px; font-size: 13px; border-radius: 8px; text-transform: none; letter-spacing: normal; font-weight: 500; }
+.filter-row .ss-panel { text-transform: none; letter-spacing: normal; font-weight: 400; }
 .filter-btn { height: 34px; padding: 0 16px; border-radius: 8px; background: var(--accent, #F47948); color: #fff; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
 .sz-row { display: flex; gap: 6px; align-items: center; margin-bottom: 14px; }
 .sz-btn { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); font-size: 12px; cursor: pointer; }
@@ -178,24 +183,30 @@ export function renderLogs(d: LogsRenderInput): string {
 <div class="filter-row">
 	<label>จาก <input type="date" name="date_from" value="${esc(d.filters.dateFrom)}"></label>
 	<label>ถึง  <input type="date" name="date_to"   value="${esc(d.filters.dateTo)}"></label>
-	<label>Model
-		<select name="model">
-			<option value=""${d.filters.model === '' ? ' selected' : ''}>ทุก model</option>
-			${modelOpts}
-		</select>
-	</label>
-	<label>Account
-		<select name="account">
-			<option value=""${d.filters.account === '' ? ' selected' : ''}>ทุก account</option>
-			${accountOpts}
-		</select>
-	</label>
-	<label>Client
-		<select name="client">
-			<option value=""${d.filters.client === '' ? ' selected' : ''}>ทุก client</option>
-			${clientOpts}
-		</select>
-	</label>
+	<div class="lf">Model
+		<div class="select-wrap">
+			<select class="select js-search-select" name="model">
+				<option value=""${d.filters.model === '' ? ' selected' : ''}>ทุก model</option>
+				${modelOpts}
+			</select>
+		</div>
+	</div>
+	<div class="lf">Account
+		<div class="select-wrap">
+			<select class="select js-search-select" name="account">
+				<option value=""${d.filters.account === '' ? ' selected' : ''}>ทุก account</option>
+				${accountOpts}
+			</select>
+		</div>
+	</div>
+	<div class="lf">Client
+		<div class="select-wrap">
+			<select class="select js-search-select" name="client">
+				<option value=""${d.filters.client === '' ? ' selected' : ''}>ทุก client</option>
+				${clientOpts}
+			</select>
+		</div>
+	</div>
 	<input type="hidden" name="per_page" id="perPageInput" value="${esc(perPageVal)}">
 	<button type="submit" class="filter-btn">กรอง</button>
 </div>
@@ -257,6 +268,7 @@ document.querySelectorAll('.sz-btn').forEach(btn => {
 		pageSubtitle: 'ดูทุก field ของทุก log entry',
 		content,
 		pageCss: css,
+		pageJs: searchSelectJs,
 		title: 'SDB AI Insight — Logs',
 	});
 }

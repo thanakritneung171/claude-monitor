@@ -4,7 +4,7 @@ import { esc, num } from '../lib/format';
 import { renderLayout } from './layout';
 import { relativeTimeTh, accountStatus } from '../lib/account';
 
-export interface NewIdentityRenderInput {
+export interface AccountIdentityRenderInput {
 	rows: EmailIdentityRow[];
 	user?: SessionUser;
 }
@@ -41,7 +41,7 @@ const pageCss = `
 .ni-wrap::-webkit-scrollbar-track { background:var(--bg-soft); }
 .ni-wrap::-webkit-scrollbar-thumb { background:var(--peach-300); border-radius:10px; border:3px solid var(--bg-soft); }
 .ni-wrap::-webkit-scrollbar-thumb:hover { background:var(--peach-400); }
-.ni-table { width:100%; min-width:1520px; border-collapse:collapse; font-size:13px; }
+.ni-table { width:100%; min-width:1760px; border-collapse:collapse; font-size:13px; }
 .ni-table th { background:var(--bg-soft,var(--card)); padding:10px 12px; text-align:left; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); white-space:nowrap; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:1; }
 .ni-table td { padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:middle; white-space:nowrap; }
 .ni-table tbody tr:last-child td { border-bottom:0; }
@@ -50,6 +50,8 @@ const pageCss = `
 .ni-muted { color:var(--ink-3); font-size:12px; }
 .ni-mono { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:11px; color:var(--ink-2); white-space:nowrap; }
 .ni-badge { display:inline-block; padding:2px 7px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }
+.ni-ips { display:inline-flex; gap:4px; align-items:center; flex-wrap:nowrap; }
+.ni-ip { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:11px; color:var(--ink-2); background:var(--bg-soft); border:1px solid var(--line); border-radius:6px; padding:2px 6px; white-space:nowrap; }
 .ni-ipcount { font-family:"JetBrains Mono",ui-monospace,monospace; font-size:11px; color:var(--ink); font-weight:600; background:var(--bg-soft); border:1px solid var(--line); border-radius:6px; padding:2px 7px; cursor:help; }
 .ni-dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px; vertical-align:middle; background:var(--ink-3); }
 .ni-dot.live { background:var(--good); }
@@ -58,6 +60,19 @@ const pageCss = `
 .ni-when { color:var(--ink-2); font-size:12px; white-space:nowrap; }
 .ni-empty { text-align:center; padding:48px 16px; color:var(--ink-3); }
 `;
+
+const IP_SHOW = 3;
+
+/** IPs ที่ map กับ account นี้ — แสดง IP_SHOW ตัวแรก ที่เหลือรวมเป็น +N (hover ดูทั้งหมด) */
+function ipList(ips: string[]): string {
+	if (ips.length === 0) return '<span class="ni-muted">—</span>';
+	const shown = ips.slice(0, IP_SHOW).map(ip => `<span class="ni-ip">${esc(ip)}</span>`).join('');
+	const rest  = ips.length - IP_SHOW;
+	const more  = rest > 0
+		? `<span class="ni-ipcount" title="${esc(ips.join('\n'))}">+${rest}</span>`
+		: '';
+	return `<span class="ni-ips">${shown}${more}</span>`;
+}
 
 function row(r: EmailIdentityRow): string {
 	const emailUrl = `/account?identity=${encodeURIComponent(r.email)}`;
@@ -83,6 +98,7 @@ function row(r: EmailIdentityRow): string {
 
 	return `<tr>
 		<td><a class="ni-email" href="${emailUrl}">${esc(r.email)}</a></td>
+		<td>${ipList(r.ips)}</td>
 		<td>${name}</td>
 		<td>${acctId}</td>
 		<td>${uuid}</td>
@@ -98,20 +114,22 @@ function row(r: EmailIdentityRow): string {
 	</tr>`;
 }
 
-export function renderNewIdentity(input: NewIdentityRenderInput): string {
+export function renderAccountIdentity(input: AccountIdentityRenderInput): string {
 	const { rows } = input;
 	const totalCalls  = rows.reduce((s, r) => s + r.calls, 0);
 	const withDevice  = rows.filter(r => r.os_type).length;
 	const withAnonId  = rows.filter(r => r.anon_id).length;
+	const totalIps    = new Set(rows.flatMap(r => r.ips)).size;
 
 	const body = rows.length === 0
 		? `<div class="ni-empty">ยังไม่มี identity — รอ proxy จับ email จาก traffic ก่อน</div>`
 		: `<table class="ni-table">
 			<thead><tr>
 				<th>Email</th>
+				<th>IPs</th>
 				<th>Name</th>
 				<th>Account ID</th>
-					<th>UUID</th>
+				<th>UUID</th>
 				<th>Anon ID</th>
 				<th>OS</th>
 				<th>Arch</th>
@@ -129,18 +147,19 @@ export function renderNewIdentity(input: NewIdentityRenderInput): string {
 		<div class="ni-stats">
 			<div class="ni-stat"><div class="lbl">ผู้ใช้ (email)</div><div class="val">${num(rows.length)}</div></div>
 			<div class="ni-stat"><div class="lbl">Calls รวม</div><div class="val">${num(totalCalls)}</div></div>
+			<div class="ni-stat"><div class="lbl">IP ที่ map ได้</div><div class="val">${num(totalIps)}</div></div>
 			<div class="ni-stat"><div class="lbl">มี Device Info</div><div class="val">${num(withDevice)}</div></div>
 			<div class="ni-stat"><div class="lbl">มี Anon ID</div><div class="val">${num(withAnonId)}</div></div>
 		</div>
 		<div class="ni-wrap">${body}</div>`;
 
 	return renderLayout({
-		activeNav: 'new-identity',
+		activeNav: 'account-identity',
 		user: input.user,
-		pageTitle: 'New Identity',
-		pageSubtitle: 'Identity แบบ email เป็นหลัก (VPN-safe) — รวมทุก IP/device/client ของคนเดียวเป็นแถวเดียว',
+		pageTitle: 'Account Identity',
+		pageSubtitle: 'Identity แบบ email เป็นหลัก (VPN-safe) — รวมทุก IP/device/client ของคนเดียวเป็นแถวเดียว พร้อม IP ที่ map กับ account',
 		content,
 		pageCss,
-		title: 'New Identity — SDB AI Insight',
+		title: 'Account Identity — SDB AI Insight',
 	});
 }

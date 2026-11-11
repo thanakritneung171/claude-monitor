@@ -9,7 +9,7 @@ import { handleDashboard } from './routes/dashboard';
 import { handleExport } from './routes/export';
 import { handleAccounts } from './routes/accounts';
 import { handleAccountDetail } from './routes/account-detail';
-import { handleIdentity, handleNewIdentity } from './routes/identity';
+import { handleAccountIdentity } from './routes/account-identity';
 import { handleLoginGet, handleCallback, handleLogout, handleMe } from './routes/auth';
 import { handleAnalytics } from './routes/analytics';
 import { handleLogs } from './routes/logs';
@@ -55,8 +55,9 @@ export default {
 		if (pathname === '/'             && method === 'GET') return handleDashboard(url, env, user);
 		if (pathname === '/accounts'     && method === 'GET') return handleAccounts(url, env, user);
 		if (pathname === '/account'      && method === 'GET') return handleAccountDetail(url, env, user);
-		if (pathname === '/identity'     && method === 'GET') return handleIdentity(url, env, user);
-		if (pathname === '/new-identity' && method === 'GET') return handleNewIdentity(url, env, user);
+		if (pathname === '/account-identity' && method === 'GET') return handleAccountIdentity(url, env, user);
+		// เปลี่ยนชื่อจาก /new-identity → /account-identity (คง bookmark เดิมไว้)
+		if (pathname === '/new-identity')    return Response.redirect(new URL('/account-identity', url).toString(), 301);
 		if (pathname === '/analytics'    && method === 'GET') return handleAnalytics(url, env, user);
 		if (pathname === '/logs'         && method === 'GET') return handleLogs(url, env, user);
 		if (pathname === '/insights'     && method === 'GET') return handleInsights(url, env, user);

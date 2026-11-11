@@ -1,8 +1,8 @@
 # SDB AI Insight — ระบบติดตาม Prompt ของ Claude (Context สำหรับ NotebookLM)
 
 > เอกสารนี้เป็น **source context** สำหรับป้อนเข้า NotebookLM
-> ครอบคลุม 4 หัวข้อหลัก: (1) การทำงานของระบบ (2) การเก็บ log prompt (3) เงื่อนไขการได้ email ของผู้ใช้จากแต่ละ platform (4) การเก็บข้อมูลในหน้า New Identity
-> เนื้อหาทุกส่วนอ้างอิงจากโค้ดจริง: `proxy/addon.py`, `worker/src/routes/log.ts`, `worker/src/db/queries.ts`, `worker/migrations/0010_email_identity.sql`, `worker/src/views/new-identity.ts`
+> ครอบคลุม 4 หัวข้อหลัก: (1) การทำงานของระบบ (2) การเก็บ log prompt (3) เงื่อนไขการได้ email ของผู้ใช้จากแต่ละ platform (4) การเก็บข้อมูลในหน้า Account Identity
+> เนื้อหาทุกส่วนอ้างอิงจากโค้ดจริง: `proxy/addon.py`, `worker/src/routes/log.ts`, `worker/src/db/queries.ts`, `worker/migrations/0010_email_identity.sql`, `worker/src/views/account-identity.ts`
 > หลักการกลางของระบบ: **"อ่านตัวตนจาก token ที่ request พกมาเอง แทนการเดาตัวตนจาก IP"** → ระบุตัวตนด้วย email ทำให้ปลอดภัยเมื่อผู้ใช้เปลี่ยน IP ผ่าน VPN (VPN-safe)
 
 ---
@@ -296,11 +296,11 @@ proxy เขียน log ลง 2 ที่พร้อมกัน: ไฟล�
 
 ---
 
-## 4. การเก็บข้อมูลในหน้า New Identity
+## 4. การเก็บข้อมูลในหน้า Account Identity
 
 ### 4.1 ตาราง `email_identity` — ทะเบียนตัวตน canonical
 
-หน้า **New Identity** (`/new-identity`) แสดงข้อมูลจากตาราง `email_identity` ซึ่งเป็น **"ทะเบียนตัวตน canonical: 1 คน 1 แถว" keyed ด้วย email** (VPN-safe) รวมทุก IP / device / client ของคนคนเดียวให้เหลือแถวเดียว — ต่างจากหน้า Identity เดิมที่ผูกกับ IP (1 IP 1 แถว ทำให้คนเดียวกระจายหลายแถวเมื่อใช้ VPN)
+หน้า **Account Identity** (`/account-identity` — เดิมชื่อ New Identity, `/new-identity` redirect มาที่นี่) แสดงข้อมูลจากตาราง `email_identity` ซึ่งเป็น **"ทะเบียนตัวตน canonical: 1 คน 1 แถว" keyed ด้วย email** (VPN-safe) รวมทุก IP / device / client ของคนคนเดียวให้เหลือแถวเดียว — ต่างจากหน้า IP Identity เดิมที่ผูกกับ IP (1 IP 1 แถว ทำให้คนเดียวกระจายหลายแถวเมื่อใช้ VPN — หน้านั้นถูกลบแล้ว)
 
 โครงสร้างตาราง (`0010_email_identity.sql`):
 
@@ -316,22 +316,25 @@ proxy เขียน log ลง 2 ที่พร้อมกัน: ไฟล�
 | `host_arch` | TEXT | สถาปัตยกรรม CPU เช่น amd64 |
 | `app_version` | TEXT | เวอร์ชัน Claude Code |
 | `terminal` | TEXT | ชนิด terminal |
-| `ips` | TEXT | รายการ IP (comma-separated) ที่คนนี้เคยใช้ |
+| `ips` | TEXT | รายการ IP (comma-separated) จากการ seed ครั้งแรก — `upsertEmailIdentity()` ไม่อัปเดตคอลัมน์นี้ (หน้าจอดึง IP สดจาก `api_logs.client_ip` แทน ดู 4.2) |
 | `client_types` | TEXT | รายการชนิด client (comma-separated) ที่เคยใช้ |
 | `first_seen` | INTEGER | เวลาที่เห็นครั้งแรก (epoch ms) |
 | `updated_ms` | INTEGER | เวลาที่อัปเดตล่าสุด |
 
 มี index บน `account_id` และ `anon_id` (เฉพาะแถวที่ค่าไม่ว่าง) และตอนสร้างตารางมีการ **seed ข้อมูลเริ่มต้นจากตาราง `ip_identity` เดิม** (group by email) เพื่อให้หน้าไม่ว่างก่อน traffic จริงจะเข้ามาเติม
 
-### 4.2 หน้าจอ New Identity แสดงอะไร
+### 4.2 หน้าจอ Account Identity แสดงอะไร
 
-**การ์ดสถิติด้านบน 4 ใบ:**
+**การ์ดสถิติด้านบน 5 ใบ:**
 - จำนวนผู้ใช้ (นับ email)
 - Calls รวม (ผลรวมจำนวน call ของทุกคน)
+- IP ที่ map ได้ (จำนวน IP ไม่ซ้ำรวมทุกคน)
 - จำนวนที่มี Device Info (มี os_type)
 - จำนวนที่มี Anon ID
 
-**คอลัมน์ในตาราง:** Email, Name, Account ID, UUID, Anon ID, OS, Arch, App Version, Terminal, Clients (แสดงเป็น badge สีตามชนิด client), First Seen, Last Seen (มีจุดสีบอกสถานะ live/idle/cold), จำนวน Calls
+**คอลัมน์ในตาราง:** Email, IPs, Name, Account ID, UUID, Anon ID, OS, Arch, App Version, Terminal, Clients (แสดงเป็น badge สีตามชนิด client), First Seen, Last Seen (มีจุดสีบอกสถานะ live/idle/cold), จำนวน Calls
+
+**คอลัมน์ IPs** = IP ที่ map กับ account นั้น ได้จาก `DISTINCT api_logs.client_ip` ของ email นั้น รวมกับ seed เดิมใน `email_identity.ips` (ไม่ซ้ำ) — แสดง 3 ตัวแรก ที่เหลือเป็น badge `+N` (hover ดูทั้งหมด) · IP ใช้เพื่อ audit เท่านั้น ไม่ได้ใช้ระบุตัวตน
 
 แต่ละ client มีสีประจำตัว เช่น `claude-code-cli` = น้ำเงิน, `claude-code-vscode` = ม่วง, `claude-desktop` = ส้ม, `claude-desktop-cowork` = เขียว, `api` = เทา คลิกที่ email จะลิงก์ไปหน้า `/account?identity=<email>`
 
@@ -352,9 +355,10 @@ proxy เขียน log ลง 2 ที่พร้อมกัน: ไฟล�
 
 | หน้า | Route | บทบาท |
 |---|---|---|
-| **New Identity** ⭐ | `/new-identity` | ทะเบียน canonical ต่อคน (keyed ด้วย email) — live |
-| **Logs** ⭐ | `/logs` | ตาราง log แบบ full-field + filter (period/date/model/account/client) + pagination |
-| Identity (เดิม) | `/identity` | snapshot ประวัติ IP↔email แบบ **frozen** (ไม่อัปเดตแล้ว) จาก `ip_identity_backup` |
+| **Account Identity** ⭐ | `/account-identity` | ทะเบียน canonical ต่อคน (keyed ด้วย email) + IP ที่ map — live |
+| **Logs** ⭐ | `/logs` | ตาราง log แบบ full-field + filter (period/date/model/account/client — dropdown ค้นหาได้) + pagination |
+
+> หน้า IP Identity (`/identity`) ถูกลบออกแล้ว — ตาราง `ip_identity_backup` ยังอยู่ใน DB แต่ไม่มีหน้าแสดง
 
 ---
 

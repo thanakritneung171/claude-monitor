@@ -98,6 +98,8 @@ _EMAIL_BY_SESSION   sha256(sessionKey cookie) → email   (claude.ai chat)
 
 ไฟล์ใหม่: `routes/logs.ts`, `views/logs.ts`, `views/new-identity.ts`
 
+> **อัปเดตภายหลัง:** New Identity เปลี่ยนชื่อเป็น **Account Identity** (`/account-identity`, `views/account-identity.ts`, `routes/account-identity.ts` — `/new-identity` redirect 301) และเพิ่มคอลัมน์ IP ที่ map กับ account · หน้า IP Identity (`/identity`, `views/identity.ts`, `fetchIdentityBackup()`) และปุ่มลบ snapshot ในหน้า Clear Data **ถูกลบออก** — ตาราง `ip_identity_backup` ยังอยู่ใน DB
+
 ---
 
 ## 6. สรุปก่อน / หลัง

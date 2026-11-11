@@ -201,7 +201,7 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 |---|---|
 | `api_logs` | log ทุก call — ts, client, account_email, client_ip (audit), model, prompt, tokens, **cost_usd** |
 | `email_identity` | **canonical identity ต่อคน** (keyed ด้วย email) — name, account_id, org_id, device info, client types |
-| `ip_identity_backup` | snapshot แช่แข็งของ IP↔email เดิม (หน้า `/identity`) — ไม่อัปเดตแล้ว |
+| `ip_identity_backup` | snapshot แช่แข็งของ IP↔email เดิม — ไม่อัปเดตและไม่มีหน้าแสดงแล้ว |
 | `sessions` | session ผู้ใช้ที่ login (sub, email, expires_at, id_token) |
 | `oauth_state` | state + PKCE verifier ระหว่าง OAuth flow |
 | `app_settings` | ค่า config (ingest_key, notify flags) — key/value |
@@ -213,7 +213,7 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 # 🖥️ ส่วนที่ 2 — แต่ละหน้าใน SDB AI Insight คืออะไร ทำงานอย่างไร
 
 > Sidebar แสดงหลัก 3 เมนู: **Dashboard · Analytics · Accounts**
-> ส่วน Settings/Monitoring/Data Sources/Reports/Insights/Identity ซ่อนใน nav แต่เข้าผ่าน URL ได้
+> ส่วน Settings/Monitoring/Data Sources/Reports/Insights ซ่อนใน nav แต่เข้าผ่าน URL ได้
 
 ---
 
@@ -308,13 +308,14 @@ cost = (input×Pin + output×Pout + cacheRead×Pcr + cacheWrite×Pcw) / 1,000,00
 
 ---
 
-## 📌 Slide 16 — หน้า Identity (`/identity`)
+## 📌 Slide 16 — หน้า Account Identity (`/account-identity`)
 
-ตาราง **snapshot ประวัติ** IP ↔ email (frozen — ไม่อัปเดตแล้ว) จากดีไซน์เดิม ·
-identity จริงปัจจุบันย้ายไปหน้า **New Identity** (`/new-identity`) ที่ผูกด้วย **email**
+ทะเบียนตัวตน **1 คน 1 แถว** ผูกด้วย **email** (VPN-safe) — เดิมชื่อ New Identity (`/new-identity` redirect มาที่นี่) ·
+หน้า IP Identity (`/identity`) เดิมถูกลบออกแล้ว
 
 **ส่วนประกอบ:**
-- ตาราง: IP, email, name, uuid, อัปเดตล่าสุด, จำนวน calls ที่ผูกกับ IP นั้น (ข้อมูล ณ วัน snapshot)
+- การ์ดสถิติ: ผู้ใช้, Calls รวม, IP ที่ map ได้, มี Device Info, มี Anon ID
+- ตาราง: Email, **IPs ที่ map กับ account**, Name, Account ID, UUID, device info, Clients, First/Last Seen, Calls
 - เรียงตามเวลาอัปเดตล่าสุด
 
 ---

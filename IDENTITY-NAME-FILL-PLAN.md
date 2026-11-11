@@ -1,7 +1,7 @@
 # IDENTITY NAME FILL — แผนเติมชื่อใน IP Identity
 
 > ## ⚠️ SUPERSEDED (2026-06) — บันทึกประวัติ
-> แผนนี้เกี่ยวกับการเติม `name` ในตาราง **`ip_identity`** (IP-based) ซึ่งปัจจุบัน **เลิกใช้แล้ว** (`ip_identity` ถูก DROP ใน migration `0011`, หน้า `/identity` กลายเป็น snapshot **frozen**) ทะเบียนตัวตนปัจจุบันคือ **`email_identity`** (keyed ด้วย email) ที่มีคอลัมน์ `name` และเติมผ่าน `upsertEmailIdentity()` แล้ว — ปัญหาในเอกสารนี้จึงไม่เกี่ยวข้องอีก เก็บไว้เป็นบันทึกประวัติ ดู [CONTEXT-PROMPT-LOG-SYSTEM.md](CONTEXT-PROMPT-LOG-SYSTEM.md) §4
+> แผนนี้เกี่ยวกับการเติม `name` ในตาราง **`ip_identity`** (IP-based) ซึ่งปัจจุบัน **เลิกใช้แล้ว** (`ip_identity` ถูก DROP ใน migration `0011`, หน้า `/identity` กลายเป็น snapshot **frozen**) ทะเบียนตัวตนปัจจุบันคือ **`email_identity`** (keyed ด้วย email) ที่มีคอลัมน์ `name` และเติมผ่าน `upsertEmailIdentity()` แล้ว — ปัญหาในเอกสารนี้จึงไม่เกี่ยวข้องอีก เก็บไว้เป็นบันทึกประวัติ (ภายหลังหน้า `/identity` และ `views/identity.ts` ถูกลบออกแล้ว — ลิงก์ไฟล์ด้านล่างจึงใช้ไม่ได้) ดู [CONTEXT-PROMPT-LOG-SYSTEM.md](CONTEXT-PROMPT-LOG-SYSTEM.md) §4
 >
 > ---
 >

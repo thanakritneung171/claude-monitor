@@ -185,7 +185,7 @@ const gate = await requireUser(request, env);
 if (gate.response) return gate.response;
 if (pathname === '/'        && method === 'GET') return handleDashboard(url, env, user);
 if (pathname === '/logs'    && method === 'GET') return handleLogs(url, env, user);
-// ... accounts, analytics, identity, new-identity, insights, reports, monitoring, export, settings, clear-data
+// ... accounts, analytics, account-identity (+ redirect /new-identity), insights, reports, monitoring, export, settings, clear-data
 ```
 
 ### POST /log (`routes/log.ts`)

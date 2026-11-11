@@ -75,8 +75,8 @@
 | GET | `/logs` | login | full-field table + filter + pagination |
 | GET | `/analytics` | login | trend chart + Export PDF |
 | GET | `/accounts` · `/account` | login | สรุป/รายละเอียดราย account |
-| GET | `/new-identity` | login | ทะเบียน canonical ต่อคน (keyed email) |
-| GET | `/identity` | login | snapshot IP↔email (frozen) |
+| GET | `/account-identity` | login | Account Identity — ทะเบียน canonical ต่อคน (keyed email) + IP ที่ map |
+| GET | `/new-identity` | — | redirect 301 → `/account-identity` (ชื่อเดิม) |
 | GET | `/insights` · `/reports` · `/monitoring` · `/data-sources` | login | วิเคราะห์/รายงาน/สถานะ |
 | GET | `/export` | login | download CSV/XLSX |
 | GET/POST | `/settings` · `/settings/key-rotate` · `/settings/notifications` | login (admin) | ตั้งค่า + rotate ingest key |
@@ -108,7 +108,7 @@ Indexes: `ts DESC`, `model`, `client`, `machine_name`, `account_email`
 | ตาราง | บทบาท | migration |
 |---|---|---|
 | `email_identity` | ทะเบียนตัวตน canonical keyed ด้วย email (VPN-safe) | `0010` |
-| `ip_identity_backup` | snapshot ประวัติ IP↔email แบบ frozen (powers `/identity`) | `0009` |
+| `ip_identity_backup` | snapshot ประวัติ IP↔email แบบ frozen (ไม่มีโค้ดอ่านแล้ว — หน้า `/identity` ถูกลบ) | `0009` |
 | `sessions` · `oauth_state` | Logto session + OAuth state/PKCE | `0003`/`0004` |
 | `app_settings` | key/value ตั้งค่า (เช่น ingest key, notifications) | `0002` |
 
@@ -121,9 +121,9 @@ Indexes: `ts DESC`, `model`, `client`, `machine_name`, `account_email`
 ไม่ใช่หน้าเดียวอีกต่อไป — เป็น **multi-page** ที่ใช้ shell ร่วม (`layout.ts` + sidebar) แต่ละหน้า server-render HTML (inline CSS + client.js เท่าที่จำเป็น) ตัวอย่างหน้า:
 
 - **Dashboard (`/`)** — KPI cards (calls/tokens/cache/cost) + breakdown (model/client/account) + recent calls + modal ดู prompt เต็ม
-- **Logs (`/logs`)** — ทุกฟิลด์ + filter (period/date/model/account/client) + pagination
+- **Logs (`/logs`)** — ทุกฟิลด์ + filter (period/date/model/account/client — dropdown ค้นหาได้แบบเดียวกับ Dashboard) + pagination
 - **Analytics (`/analytics`)** — trend chart, filter 24h/period, ปุ่ม Export PDF (print CSS landscape A4)
-- **New Identity (`/new-identity`)** — 1 คน 1 แถว keyed ด้วย email รวมทุก IP/device/client
+- **Account Identity (`/account-identity`)** — 1 คน 1 แถว keyed ด้วย email รวมทุก IP/device/client — คอลัมน์ IPs = distinct `api_logs.client_ip` ของ email นั้น + seed เดิมใน `email_identity.ips`
 
 ---
 

@@ -158,8 +158,7 @@ Worker ชื่อ `claude-monitor-hooks` ผูกกับ D1 ชื่อ `p
 | `/logs` | GET | login | ตาราง log แบบ full-field + filter + pagination |
 | `/analytics` | GET | login | กราฟ trend + Export PDF |
 | `/accounts`, `/account` | GET | login | สรุปต่อ account / รายละเอียดราย account |
-| `/new-identity` | GET | login | ทะเบียนตัวตน canonical ต่อคน (keyed ด้วย email) |
-| `/identity` | GET | login | snapshot ประวัติ IP↔email แบบ **frozen** (ไม่อัปเดตแล้ว) |
+| `/account-identity` | GET | login | Account Identity — ทะเบียนตัวตน canonical ต่อคน (keyed ด้วย email) + IP ที่ map กับ account (`/new-identity` → redirect 301) |
 | `/insights`, `/reports`, `/monitoring`, `/data-sources` | GET | login | วิเคราะห์/รายงาน/สถานะ |
 | `/export` | GET | login | download CSV/XLSX |
 | `/settings`, `/settings/key-rotate`, `/settings/notifications` | GET/POST | login (admin) | ตั้งค่า + rotate ingest key |
@@ -171,7 +170,7 @@ Worker ชื่อ `claude-monitor-hooks` ผูกกับ D1 ชื่อ `p
 
 - `api_logs` — 1 แถว = 1 call (23 คอลัมน์ ดูด้านล่าง)
 - `email_identity` — ทะเบียนตัวตน canonical keyed ด้วย email (VPN-safe)
-- `ip_identity_backup` — snapshot ประวัติ IP↔email แบบ frozen (powers หน้า `/identity`)
+- `ip_identity_backup` — snapshot ประวัติ IP↔email แบบ frozen (ไม่มีหน้าแสดงแล้ว — หน้า IP Identity `/identity` ถูกลบ, ตารางยังคงอยู่ใน DB)
 - `sessions`, `oauth_state`, `app_settings` — auth + การตั้งค่า
 
 ```sql

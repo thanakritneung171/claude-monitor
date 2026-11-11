@@ -22,8 +22,7 @@ export type NavKey =
 	| 'dashboard'
 	| 'analytics'
 	| 'accounts'
-	| 'identity'
-	| 'new-identity'
+	| 'account-identity'
 	| 'logs'
 	| 'settings';
 
@@ -40,7 +39,7 @@ export interface LayoutInput {
 }
 
 // const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'insights', 'data_sources', 'monitoring', 'accounts', 'users', 'reports', 'settings'];
-const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'accounts', 'identity', 'new-identity', 'logs', 'settings'];
+const NAV_KEYS: NavKey[] = ['dashboard', 'analytics', 'accounts', 'account-identity', 'logs', 'settings'];
 
 export function renderSidebar(activeNav: NavKey, user?: SessionUser): string {
 	let out = sidebarHtml;

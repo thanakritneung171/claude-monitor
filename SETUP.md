@@ -216,8 +216,7 @@ https://claude-monitor-hooks.<name>.workers.dev/
 | `/logs` | ตาราง log แบบ full-field + filter + pagination |
 | `/analytics` | กราฟ trend + Export PDF |
 | `/accounts`, `/account` | สรุป/รายละเอียดราย account |
-| `/new-identity` | ทะเบียนตัวตน canonical ต่อคน (keyed ด้วย email) |
-| `/identity` | snapshot ประวัติ IP↔email (frozen) |
+| `/account-identity` | Account Identity — ทะเบียนตัวตน canonical ต่อคน (keyed ด้วย email) + IP ที่ map กับ account |
 | `/insights`, `/reports`, `/monitoring` | วิเคราะห์/รายงาน/สถานะ |
 | `/settings` | rotate ingest key + notifications (admin) |
 

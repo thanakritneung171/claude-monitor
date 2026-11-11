@@ -11,7 +11,6 @@ export interface ClearDataRenderInput {
 	totalLogs: number;
 	totalSessions: number;
 	totalEmailIdentity: number;
-	totalIpBackup: number;
 	todayStr: string;
 	banner?: { kind: 'success' | 'error'; message: string };
 }
@@ -103,26 +102,13 @@ export function renderClearData(d: ClearDataRenderInput): string {
 
 	const identityBlock = `
 		<div class="cd-section danger">
-			<h3>ลบ Identity (New Identity)</h3>
-			<p class="desc">ลบทุกแถวในตาราง <span class="mono">email_identity</span> (หน้า New Identity) — ปัจจุบันมี <strong>${num(d.totalEmailIdentity)}</strong> users · ตารางจะ rebuild เองจาก log ใหม่</p>
+			<h3>ลบ Identity (Account Identity)</h3>
+			<p class="desc">ลบทุกแถวในตาราง <span class="mono">email_identity</span> (หน้า Account Identity) — ปัจจุบันมี <strong>${num(d.totalEmailIdentity)}</strong> users · ตารางจะ rebuild เองจาก log ใหม่</p>
 			<form method="post" action="/clear-data"
 			      onsubmit="return confirm('ยืนยันลบ email_identity ทั้งหมด ${num(d.totalEmailIdentity)} แถว?');">
 				<input type="hidden" name="action" value="email_identity">
 				<div class="actions">
 					<button type="submit" class="btn danger">ลบ Identity ทั้งหมด</button>
-				</div>
-			</form>
-		</div>`;
-
-	const ipBackupBlock = `
-		<div class="cd-section danger">
-			<h3>ลบ IP Identity snapshot</h3>
-			<p class="desc">ลบ snapshot เก่าในตาราง <span class="mono">ip_identity_backup</span> (หน้า /identity — frozen) — ปัจจุบันมี <strong>${num(d.totalIpBackup)}</strong> แถว · ลบแล้วหน้า /identity จะว่าง (เป็น snapshot ประวัติ ลบแล้วหายถาวร)</p>
-			<form method="post" action="/clear-data"
-			      onsubmit="return confirm('ยืนยันลบ ip_identity_backup ทั้งหมด ${num(d.totalIpBackup)} แถว? snapshot ประวัติจะหายถาวร');">
-				<input type="hidden" name="action" value="ip_backup">
-				<div class="actions">
-					<button type="submit" class="btn danger">ลบ snapshot ทั้งหมด</button>
 				</div>
 			</form>
 		</div>`;
@@ -138,7 +124,6 @@ export function renderClearData(d: ClearDataRenderInput): string {
 				${allBlock}
 				${sessBlock}
 				${identityBlock}
-				${ipBackupBlock}
 			</section>
 		</div>`;
 
