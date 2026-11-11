@@ -68,7 +68,7 @@
 - **Proxy ตัวเดียวรองรับทุก client** เพราะใช้ HTTPS_PROXY เดียวกัน + CA cert ชุดเดียว
 - **`--allow-hosts` regex** จะ MITM เฉพาะ subdomain ของ Anthropic / Claude / claudeusercontent ที่เหลือ pass-through ไม่กระทบความเร็วของ traffic อื่น (Slack, GitHub, ฯลฯ)
 - **addon.py แตกเป็น class เล็กๆ** แต่ละตัวรับผิดชอบ endpoint เดียว — debug ง่าย และเพิ่มตัวใหม่โดยไม่กระทบของเดิม
-- **Local JSONL ก่อน Worker** — call ทุก call ถูก append ลง `log/claude_YYYY-MM-DD.jsonl` ก่อนส่ง Worker เป็น thread แยก (fire-and-forget) ถ้า Worker ล่มจะไม่กระทบ log เครื่อง
+- **Local JSONL ก่อน Worker** — call ทุก call ถูก append ลง `log/<YYYY_MM>/<DD>/claude_YYYY-MM-DD.jsonl` ก่อนส่ง Worker เป็น thread แยก (fire-and-forget) ถ้า Worker ล่มจะไม่กระทบ log เครื่อง
 
 ---
 
@@ -156,7 +156,7 @@ class ToolSchemaFixer:
         # หา tool ใน body.tools[] ที่ input_schema (หรือ custom.input_schema)
         # มี oneOf / allOf / anyOf ที่ root → flatten เป็น
         # {"type": "object", "additionalProperties": True}
-        # log รายชื่อ tool ที่แก้ไปลง log/schema_fixes.jsonl
+        # log รายชื่อ tool ที่แก้ไปลง log/<YYYY_MM>/<DD>/schema_fixes.jsonl
 ```
 
 **ทำไมต้องมี:** Anthropic API ปฏิเสธ schema ที่มี union ที่ root (`oneOf` / `allOf` / `anyOf`) — บาง MCP connector ของ claude.ai (Notion, Google Drive, ฯลฯ) ส่ง schema แบบนี้มา ทำให้ทั้ง request 400 ทันที hook นี้ rewrite ในชั้น proxy เพื่อให้ผ่าน
@@ -189,10 +189,9 @@ class ToolSchemaFixer:
 |---|---|---|
 | `ClaudeAccountSniffer` | จับ email จาก `/api/auth/current_account`, `/api/account`, `/api/bootstrap/...` (whitelist เท่านั้น) ผูกกับ session cookie → `_EMAIL_BY_SESSION` | console + ใช้ใน monitors |
 | `ClaudeCodeMetricsMonitor` | ดัก `/api/claude_code/metrics` — สร้าง `_EMAIL_BY_UUID` / `_EMAIL_BY_TOKEN` + เก็บ device info (OS/arch/version) + account_id/org_id keyed ด้วย email | feeds identity cache |
-| `ClaudeConnectionLogger` | log SNI hostname ของทุก TLS handshake (รวม passthrough) — ใช้ค้น endpoint ใหม่ | `log/claude_connections.jsonl` |
-| `ClaudeDesktopDiscovery` | log POST อื่นๆ บน claude.ai/anthropic ที่ยังไม่มี matcher | `log/claude_desktop_discovery.jsonl` |
-| `ClaudeBridgeDiscovery` | log WS frame ของ bridge ที่ยังไม่รู้จัก | `log/claude_bridge_discovery.jsonl` |
-| `IdentityDebug` | (ชั่วคราว) log การ resolve identity ต่อ request — auth scheme, token hash, JWT claims, account_uuid | `log/identity_debug.jsonl` |
+| `ClaudeConnectionLogger` | log SNI hostname ของทุก TLS handshake (รวม passthrough) — ใช้ค้น endpoint ใหม่ | `log/<YYYY_MM>/<DD>/claude_connections.jsonl` |
+| `ClaudeDesktopDiscovery` | log POST อื่นๆ บน claude.ai/anthropic ที่ยังไม่มี matcher | `log/<YYYY_MM>/<DD>/claude_desktop_discovery.jsonl` |
+| `ClaudeBridgeDiscovery` | log WS frame ของ bridge ที่ยังไม่รู้จัก | `log/<YYYY_MM>/<DD>/claude_bridge_discovery.jsonl` |
 
 > `ClaudeSegmentMonitor` ยังมีในไฟล์แต่ **เลิกใช้** (Segment host ไม่มี session cookie จึง correlate ไม่ได้) — `anon_id` กลายเป็น vestigial
 
@@ -406,7 +405,7 @@ claude
 ตรวจ log:
 
 ```powershell
-Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 1
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 1
 ```
 
 ควรเห็น entry ใหม่ที่ `client: "claude-code-cli"` มี tokens > 0
@@ -426,14 +425,14 @@ proxy\start.ps1
 
 ```powershell
 # ทุก call วันนี้
-Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" -Wait -Tail 5
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" -Wait -Tail 5
 ```
 
 ### ดู connections (debug)
 
 ```powershell
 # host ทุกตัวที่ client พยายาม reach (รวม passthrough)
-Get-Content log\claude_connections.jsonl
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_connections.jsonl"
 ```
 
 ### ปิดชั่วคราว — ไม่อยาก log
@@ -487,8 +486,8 @@ _PRICE = {
 
 ถ้าเจอ host/path ใหม่ที่อยากดัก:
 
-1. ดู `log/claude_connections.jsonl` หา SNI ที่น่าสนใจ
-2. ดู `log/claude_desktop_discovery.jsonl` หา POST path ที่ยังไม่มี matcher
+1. ดู `log/<YYYY_MM>/<DD>/claude_connections.jsonl` หา SNI ที่น่าสนใจ
+2. ดู `log/<YYYY_MM>/<DD>/claude_desktop_discovery.jsonl` หา POST path ที่ยังไม่มี matcher
 3. เพิ่ม class ใหม่ใน `addon.py` คล้าย `ClaudeDesktopMonitor`
 4. เพิ่มใน list `addons` ท้ายไฟล์
 5. ถ้าต้อง MITM host ใหม่ที่อยู่นอก regex — แก้ `start.ps1` ตัวแปร `$allowHosts`
@@ -591,7 +590,7 @@ npm run deploy
 
 1. ตรวจว่า `ToolSchemaFixer()` อยู่ใน list `addons` ของ `addon.py` ท้ายไฟล์
 2. ตรวจว่า mitmproxy reload แล้ว (mtime ของ `addon.py` กับ `__pycache__/` ควรห่างกันแค่ 1 วินาที)
-3. ดู `log/schema_fixes.jsonl` — ถ้าว่าง = hook ยังไม่ทำงาน
+3. ดู `log/<YYYY_MM>/<DD>/schema_fixes.jsonl` — ถ้าว่าง = hook ยังไม่ทำงาน
 4. ถ้า body มี shape อื่น — ดู error path เป๊ะๆ (`tools.47.custom.input_schema` หรือ `tools.47.input_schema`) แล้วปรับ check ใน `ToolSchemaFixer.request`
 
 ### ตรวจสอบว่า addon ทำงานถูก
@@ -619,15 +618,23 @@ Get-ChildItem Cert:\CurrentUser\Root\* |
 
 ```
 log/
-├── claude_2026-06-12.jsonl              # log หลัก — 1 บรรทัด = 1 call (โครงสร้างด้านบน)
-├── claude_connections.jsonl             # SNI ของทุก TLS handshake
-├── claude_desktop_discovery.jsonl       # POST อื่นๆ บน claude.ai/anthropic ที่ยังไม่ดัก
-├── claude_bridge_discovery.jsonl        # WebSocket frame ของ bridge ที่ยังไม่รู้จัก
-├── identity_debug.jsonl                 # debug การ resolve identity ต่อ request
-└── schema_fixes.jsonl                   # tool ที่ ToolSchemaFixer rewrite
+└── 2026_11/                                 # เดือน (YYYY_MM — เรียงถูกเสมอแม้ข้ามปี)
+    └── 11/                                  # วัน (DD)
+        ├── claude_2026-11-11.jsonl          # log หลัก — 1 บรรทัด = 1 call (โครงสร้างด้านบน)
+        ├── claude_connections.jsonl         # SNI ของทุก TLS handshake
+        ├── claude_desktop_discovery.jsonl   # POST อื่นๆ บน claude.ai/anthropic ที่ยังไม่ดัก
+        ├── claude_bridge_discovery.jsonl    # WebSocket frame ของ bridge ที่ยังไม่รู้จัก
+        ├── code_session_debug.jsonl         # (ชั่วคราว) ConversationService RPC
+        └── schema_fixes.jsonl               # tool ที่ ToolSchemaFixer rewrite
 ```
 
-ทั้งหมด append-only ลบเองได้ตลอด ไม่กระทบ proxy
+ทั้งหมด append-only ลบเองได้ตลอด ไม่กระทบ proxy — ลบข้อมูลเก่าด้วยการลบทั้งโฟลเดอร์วันหรือเดือน
+(path คำนวณใหม่ทุกครั้งที่เขียน ข้ามเที่ยงคืนเปลี่ยนโฟลเดอร์เอง ไม่ต้อง restart)
+
+**`claude_desktop_discovery.jsonl`** — body ≤ 4KB (และ `/v1/b` ทุกขนาด) เก็บเป็น JSON เต็มใน
+`req_preview`; ใหญ่กว่านั้นเก็บ `req_preview` = ข้อความ 4KB แรก + `req_shape` (โครงสร้างทั้งก้อน
+ชื่อ field + ชนิด ไม่มีค่าจริง) + `req_truncated: true` และไม่เก็บ `count_tokens`, `rum`,
+`worker/heartbeat`, `worker/events`, `client/presence`, `ping`
 
 > `proxy/identity_cache.json` (อยู่ในโฟลเดอร์ proxy ไม่ใช่ log/) คือ persistent identity map ที่ `_persist_identity()` เขียนไว้ — ลบได้ แต่จะเสีย seed ตอน cold-start (ต้องรอ metrics ยิงใหม่)
 

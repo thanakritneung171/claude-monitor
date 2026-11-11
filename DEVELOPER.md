@@ -39,7 +39,6 @@ claude-monitor/
 
 ```python
 addons = [
-    IdentityDebug(),             # (ชั่วคราว) debug การ resolve identity ต่อ request
     ClaudeConnectionLogger(),    # log SNI ของทุก TLS connection
     ToolSchemaFixer(),           # request hook — flatten oneOf/allOf/anyOf
     ClaudeAccountSniffer(),      # sniff email ก่อน — ให้ email พร้อมตอน log
@@ -128,7 +127,7 @@ WHITELIST = [r"^/api/auth/current_account$", r"^/api/account/?$",
 
 ### ToolSchemaFixer (request hook)
 
-แก้ tool ที่ `input_schema` (หรือ `custom.input_schema`) มี `oneOf/allOf/anyOf` ระดับ root — Anthropic API ปฏิเสธ → flatten เป็น `{"type":"object","additionalProperties":true}` log ลง `log/schema_fixes.jsonl` (บาง MCP connector ของ claude.ai เช่น Notion/Google Drive ส่ง schema แบบนี้มา)
+แก้ tool ที่ `input_schema` (หรือ `custom.input_schema`) มี `oneOf/allOf/anyOf` ระดับ root — Anthropic API ปฏิเสธ → flatten เป็น `{"type":"object","additionalProperties":true}` log ลง `log/<YYYY_MM>/<DD>/schema_fixes.jsonl` (บาง MCP connector ของ claude.ai เช่น Notion/Google Drive ส่ง schema แบบนี้มา)
 
 ---
 
@@ -252,9 +251,8 @@ _PRICE = {
 mitmdump -s addon.py --listen-port 8080 -vv
 
 # ดู discovery / identity debug
-Get-Content log\claude_desktop_discovery.jsonl | Select-Object -Last 5
-Get-Content log\identity_debug.jsonl | Select-Object -Last 5
-Get-Content log\claude_connections.jsonl
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_desktop_discovery.jsonl" | Select-Object -Last 5
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_connections.jsonl"
 
 # ทดสอบ Worker /log โดยตรง
 curl -X POST https://claude-monitor-hooks.<name>.workers.dev/log `

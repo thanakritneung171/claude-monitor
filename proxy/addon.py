@@ -356,16 +356,30 @@ def _load_identity_seed() -> None:
 
 HOSTNAME = socket.gethostname()
 
-# ── Local log directory (../log relative to this file) ───────────────────────
+# ── Local log directory: log/<YYYY_MM>/<DD>/<file> ───────────────────────────
+# แยกโฟลเดอร์ตามเดือน/วัน เพื่อลบข้อมูลเก่าได้ง่าย (ลบทั้งโฟลเดอร์วัน/เดือน)
+# YYYY_MM เรียงตามตัวอักษรถูกเสมอแม้ข้ามปี; path คำนวณใหม่ทุกครั้งที่เขียน
+# → ข้ามเที่ยงคืนเปลี่ยนโฟลเดอร์เองโดยไม่ต้อง restart
 # resolve() makes the path absolute first — without it, Path(".").parent == Path(".")
-# and the log dir would land at ./log relative to cwd instead of project/log
-LOG_DIR  = Path(__file__).resolve().parent.parent / "log"
+LOG_DIR = Path(__file__).resolve().parent.parent / "log"
 LOG_DIR.mkdir(exist_ok=True)
 
+
+def _day_dir() -> Path:
+    now = datetime.now()
+    d = LOG_DIR / now.strftime("%Y_%m") / now.strftime("%d")
+    d.mkdir(parents=True, exist_ok=True)   # สร้างใหม่ถ้าถูกลบระหว่างรัน
+    return d
+
+
+def _log_file(name: str) -> Path:
+    """ไฟล์ log ชื่อ name ในโฟลเดอร์ของวันนี้"""
+    return _day_dir() / name
+
+
 def _log_path() -> Path:
-    """Returns log file path for today: log/claude_YYYY-MM-DD.jsonl"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    return LOG_DIR / f"claude_{today}.jsonl"
+    """log หลักของวันนี้: log/<YYYY_MM>/<DD>/claude_YYYY-MM-DD.jsonl"""
+    return _log_file(f"claude_{datetime.now():%Y-%m-%d}.jsonl")
 
 def _write_local(payload: dict):
     """Append one JSON line to today's log file (thread-safe)."""
@@ -647,7 +661,7 @@ _COMPLETION_RE = re.compile(
 # permissive object so the request goes through. Tools rewritten this way may
 # accept inputs the original schema would have rejected, but the chat works.
 _BAD_KEYS = ("oneOf", "allOf", "anyOf")
-_FIX_LOG  = LOG_DIR / "schema_fixes.jsonl"
+_FIX_LOG_NAME = "schema_fixes.jsonl"
 
 
 def _has_top_level_union(schema) -> bool:
@@ -704,7 +718,7 @@ class ToolSchemaFixer:
         if fixed_names:
             flow.request.content = json.dumps(body).encode("utf-8")
             try:
-                with open(_FIX_LOG, "a", encoding="utf-8") as f:
+                with open(_log_file(_FIX_LOG_NAME), "a", encoding="utf-8") as f:
                     f.write(json.dumps({
                         "ts":    int(datetime.now().timestamp() * 1000),
                         "fixed": [{"idx": i, "name": n} for i, n in fixed_names],
@@ -1197,8 +1211,8 @@ class CodeSessionStreamDebug:
     ลง log/code_session_debug.jsonl เพื่อออกแบบตัวถอดเมื่อ rollout มาถึง
     (/v1/code/sessions ย้ายไป ClaudeCodeSessionMonitor แล้ว — ห้าม tap ซ้ำ เพราะ
     flow.response.stream ตั้งได้ตัวเดียว) — ลบออกเมื่อทำตัวดัก RPC เสร็จ"""
-    FILE  = LOG_DIR / "code_session_debug.jsonl"
-    LIMIT = 50 * 1024 * 1024
+    FILE_NAME = "code_session_debug.jsonl"
+    LIMIT     = 50 * 1024 * 1024        # ต่อวัน (debug ชั่วคราว)
 
     @staticmethod
     def _rpc(flow) -> bool:
@@ -1214,9 +1228,10 @@ class CodeSessionStreamDebug:
 
     def _write(self, entry: dict):
         try:
-            if self.FILE.exists() and self.FILE.stat().st_size > self.LIMIT:
+            path = _log_file(self.FILE_NAME)
+            if path.exists() and path.stat().st_size > self.LIMIT:
                 return
-            with open(self.FILE, "a", encoding="utf-8") as f:
+            with open(path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception:
             pass
@@ -1286,17 +1301,46 @@ class CodeSessionStreamDebug:
 _DISCOVERY_HOSTS = ("anthropic.com", "claude.ai", "claudeusercontent.com")
 
 
+def _json_shape(v, depth: int = 0):
+    """โครงสร้างของ JSON แบบไม่มีค่าจริง — ชื่อ field + ชนิด (string บอกแค่ความยาว)
+    list เก็บแค่ตัวอย่างตัวแรก + จำนวน เพื่อให้เล็กและไม่มีเนื้อหาแชต"""
+    if depth > 12:
+        return "…"
+    if isinstance(v, dict):
+        return {k: _json_shape(x, depth + 1) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_json_shape(v[0], depth + 1), f"…×{len(v)}"] if v else []
+    if isinstance(v, str):
+        return f"str({len(v)})"
+    if isinstance(v, bool):
+        return "bool"
+    if isinstance(v, (int, float)):
+        return "num"
+    if v is None:
+        return "null"
+    return type(v).__name__
+
+
 # ── Discovery addon (keep for debugging other endpoints) ─────────────────────
 class ClaudeDesktopDiscovery:
     """
-    Logs non-completion POSTs to any monitored Anthropic/Claude host.
-    Skips the completion endpoint (handled by ClaudeDesktopMonitor).
+    Logs non-completion POSTs to any monitored Anthropic/Claude host — ใช้หา
+    endpoint ใหม่เมื่อ Anthropic เปลี่ยน API (เช่น /v1/code/sessions, ConversationService)
+    และเป็นแหล่งข้อมูลของ seed_from_segment.py (/v1/b)
+
+    body: ≤ PREVIEW_BYTES หรืออยู่ใน FULL_BODY_PATHS → เก็บ JSON เต็ม (req_preview)
+          ใหญ่กว่านั้น → req_preview = ข้อความ PREVIEW_BYTES แรก + req_shape (โครงสร้าง
+          ทั้งก้อน ไม่มีค่า) + req_truncated = true — เดิมเก็บเต็มทุกก้อนจนไฟล์โต 4.8GB
+          และมีข้อความแชตของทุกคนอยู่ในไฟล์
     """
-    DISCOVERY_FILE = LOG_DIR / "claude_desktop_discovery.jsonl"
+    DISCOVERY_NAME  = "claude_desktop_discovery.jsonl"
+    PREVIEW_BYTES   = 4096                 # body ใหญ่กว่านี้ → ตัด + เก็บ req_shape
+    FULL_BODY_PATHS = {"/v1/b"}            # seed_from_segment.py ต้องใช้ body เต็ม
     SKIP_PATHS = {"/api/auth/", "/api/analytics", "/static/", "/favicon",
                   "/api/event_logging", "/api/v2/rum", "/v1/messages/count_tokens"}
     # path ที่มี session id อยู่กลาง ใช้ endswith แทน startswith
-    SKIP_SUFFIXES = ("/worker/heartbeat", "/client/presence", "/ping")
+    # /worker/events = 36% ของไฟล์เดิม — ClaudeCodeSessionMonitor ดูแล session แล้ว
+    SKIP_SUFFIXES = ("/worker/heartbeat", "/client/presence", "/ping", "/worker/events")
 
     def response(self, flow: http.HTTPFlow):
         host = flow.request.host
@@ -1323,8 +1367,9 @@ class ClaudeDesktopDiscovery:
 
         ct       = flow.response.headers.get("content-type", "")
         status   = flow.response.status_code
-        req_size = len(flow.request.content)
-        res_size = len(flow.response.content)
+        raw      = flow.request.content or b""
+        req_size = len(raw)
+        res_size = len(flow.response.content or b"")   # None เมื่อ response ถูก stream
 
         entry = {
             "ts":     int(datetime.now().timestamp() * 1000),
@@ -1339,12 +1384,22 @@ class ClaudeDesktopDiscovery:
         }
 
         try:
-            entry["req_preview"] = json.loads(flow.request.content)
+            body = json.loads(raw) if raw else None
         except Exception:
-            entry["req_preview"] = flow.request.content[:200].decode("utf-8", errors="replace")
+            body = None
+
+        if body is not None and (len(raw) <= self.PREVIEW_BYTES
+                                 or path_no_query in self.FULL_BODY_PATHS):
+            entry["req_preview"] = body
+        else:
+            entry["req_preview"] = raw[:self.PREVIEW_BYTES].decode("utf-8", errors="replace")
+            if len(raw) > self.PREVIEW_BYTES:
+                entry["req_truncated"] = True
+            if body is not None:
+                entry["req_shape"] = _json_shape(body)
 
         try:
-            with open(self.DISCOVERY_FILE, "a", encoding="utf-8") as f:
+            with open(_log_file(self.DISCOVERY_NAME), "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception:
             pass
@@ -1695,7 +1750,7 @@ class ClaudeBridgeDiscovery:
     Once we know the message format, we can add parsing/logging similar to
     ClaudeDesktopMonitor.
     """
-    BRIDGE_FILE = LOG_DIR / "claude_bridge_discovery.jsonl"
+    BRIDGE_NAME = "claude_bridge_discovery.jsonl"
 
     def websocket_start(self, flow: http.HTTPFlow):
         if "bridge.claudeusercontent.com" not in flow.request.host:
@@ -1761,7 +1816,7 @@ class ClaudeBridgeDiscovery:
 
     def _write(self, entry: dict):
         try:
-            with open(self.BRIDGE_FILE, "a", encoding="utf-8") as f:
+            with open(_log_file(self.BRIDGE_NAME), "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except Exception:
             pass
@@ -1776,7 +1831,7 @@ class ClaudeConnectionLogger:
 
     Each unique SNI is logged once per session.
     """
-    CONN_FILE = LOG_DIR / "claude_connections.jsonl"
+    CONN_NAME = "claude_connections.jsonl"
     _SEEN = set()
 
     def tls_clienthello(self, data):
@@ -1793,7 +1848,7 @@ class ClaudeConnectionLogger:
             "sni": sni,
         }
         try:
-            with open(self.CONN_FILE, "a", encoding="utf-8") as f:
+            with open(_log_file(self.CONN_NAME), "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
         except Exception:
             pass
@@ -1949,64 +2004,10 @@ class ClaudeSegmentMonitor:
                 _set_anon_email(anon, email)
 
 
-# ── TEMPORARY identity debug ─────────────────────────────────────────────────
-# Writes one line per /v1/messages and /api/claude_code/metrics request to
-# log/identity_debug.jsonl so we can see (from a file, not console) WHY email
-# isn't resolving: does each endpoint carry a Bearer token, do the two tokens
-# MATCH (same tok_key), what JWT claims exist, and is there a body user_id.
-# Remove this class + its addons entry once identity is confirmed working.
-class IdentityDebug:
-    FILE = LOG_DIR / "identity_debug.jsonl"
-
-    def request(self, flow: http.HTTPFlow):
-        if flow.request.host != "api.anthropic.com":
-            return
-        ep = flow.request.path.split("?", 1)[0]
-        if ep not in ("/v1/messages", "/api/claude_code/metrics"):
-            return
-
-        auth = flow.request.headers.get("Authorization", "") or \
-               flow.request.headers.get("authorization", "")
-        scheme, tok_key, claims = "(none)", "", []
-        if auth:
-            scheme = auth.split(" ", 1)[0].lower() or "(raw)"
-            if auth.lower().startswith("bearer "):
-                t = auth[7:].strip()
-                if t.startswith("sk-"):
-                    scheme = "sk-key"
-                elif t:
-                    tok_key = hashlib.sha256(t.encode("utf-8")).hexdigest()[:12]
-                    claims  = sorted(_decode_jwt_payload(t).keys())
-
-        meta_user = ""
-        try:
-            body = json.loads(flow.request.content)
-            meta = body.get("metadata") or {}
-            meta_user = str(meta.get("user_id", "")) if isinstance(meta, dict) else ""
-        except Exception:
-            pass
-
-        entry = {
-            "ts":           int(datetime.now().timestamp() * 1000),
-            "ep":           "messages" if ep == "/v1/messages" else "metrics",
-            "auth_scheme":  scheme,
-            "tok_key":      tok_key,        # sha256[:12] — compare across endpoints
-            "jwt_claims":   claims,         # claim KEYS only (no values)
-            "acct_uuid":    _meta_account_uuid(flow),   # extracted from metadata.user_id
-            "resolved":     current_email(flow),        # ← does identity resolve now?
-        }
-        try:
-            with open(self.FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-
-
 # Seed the identity map from disk + manual roster before traffic starts.
 _load_identity_seed()
 
 addons = [
-    IdentityDebug(),               # TEMP: diagnose why email isn't resolving (remove later)
     ClaudeConnectionLogger(),      # log all hosts client connects to (incl. passthrough)
     ToolSchemaFixer(),             # rewrite tool input_schema with top-level oneOf/allOf/anyOf
     ClaudeAccountSniffer(),        # detect email first so completions know it

@@ -265,7 +265,7 @@ session เก่ายังใช้ env เดิม → เปิด termina
 
 ```powershell
 # log ในเครื่องวันนี้
-Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 5
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 5
 
 # Query D1
 wrangler d1 execute prompt-logger --remote --command "SELECT SUM(cost_usd) FROM api_logs"

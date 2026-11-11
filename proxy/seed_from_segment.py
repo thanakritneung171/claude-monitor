@@ -1,6 +1,8 @@
 """
 Seed account_uuid -> email mappings into proxy/identity_cache.json from the
-Segment analytics (/v1/b) batches captured in log/claude_desktop_discovery.jsonl.
+Segment analytics (/v1/b) batches captured in the discovery logs
+(log/<YYYY_MM>/<DD>/claude_desktop_discovery.jsonl — every day folder is read,
+plus the legacy single-file log/claude_desktop_discovery.jsonl if present).
 
 WHY: Cowork / Claude Desktop hit api.anthropic.com/v1/messages with a raw sk-
 key + an account_uuid in metadata, but never emit /api/claude_code/metrics, so
@@ -20,8 +22,17 @@ import shutil
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DISCOVERY = HERE.parent / "log" / "claude_desktop_discovery.jsonl"
+LOG_ROOT = HERE.parent / "log"
 CACHE = HERE / "identity_cache.json"
+
+
+def discovery_files():
+    """ไฟล์ discovery ทุกวัน: log/<YYYY_MM>/<DD>/claude_desktop_discovery.jsonl
+    + ไฟล์เดิมแบบไฟล์เดียว (log/claude_desktop_discovery.jsonl) ถ้ายังไม่ได้ลบ"""
+    legacy = LOG_ROOT / "claude_desktop_discovery.jsonl"
+    if legacy.exists():
+        yield legacy
+    yield from sorted(LOG_ROOT.glob("*_*/*/claude_desktop_discovery.jsonl"))
 
 
 def looks_like_email(s) -> bool:
@@ -43,18 +54,21 @@ def walk(node, cur_uid, pairs):
 
 def main():
     pairs = collections.defaultdict(collections.Counter)  # uuid -> {email: count}
-    with open(DISCOVERY, encoding="utf-8") as f:
-        for line in f:
-            try:
-                e = json.loads(line)
-            except Exception:
-                continue
-            if e.get("path") != "/v1/b":
-                continue
-            rp = e.get("req_preview")
-            if isinstance(rp, dict):
-                for item in rp.get("batch") or []:
-                    walk(item, None, pairs)
+    files = list(discovery_files())
+    print(f"reading {len(files)} discovery file(s)")
+    for path in files:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                if e.get("path") != "/v1/b":
+                    continue
+                rp = e.get("req_preview")
+                if isinstance(rp, dict):
+                    for item in rp.get("batch") or []:
+                        walk(item, None, pairs)
 
     # One email per uuid = most frequent; record conflicts for review.
     resolved, conflicts = {}, {}

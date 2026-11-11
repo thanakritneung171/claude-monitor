@@ -228,7 +228,7 @@ claude
 ตรวจ log:
 
 ```powershell
-Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 1
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 1
 ```
 
 ควรเห็น entry มี `"client": "claude-code-cli"` และ `total_tokens` > 0
@@ -271,7 +271,7 @@ proxy\start.ps1                                  # 7. เริ่ม proxy
 
 # === ใช้งานประจำวัน ===
 proxy\start.ps1                                  # เริ่ม proxy (Ctrl+C เพื่อหยุด)
-Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" -Wait -Tail 5
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" -Wait -Tail 5
                                                  # ดู log แบบสด
 
 # === ลบออก ===
@@ -290,7 +290,7 @@ proxy\uninstall-claude-proxy.ps1                 # ล้าง env + settings.j
 - [ ] `[Environment]::GetEnvironmentVariable('NODE_EXTRA_CA_CERTS','User')` → path .pem
 - [ ] `Test-Path "$env:USERPROFILE\.claude\settings.json"` → True (มี env block)
 - [ ] `proxy\start.ps1` รันได้ — ขึ้น `Proxy : http://127.0.0.1:8080`
-- [ ] หลังส่ง prompt มี entry ใหม่ใน `log\claude_<วันนี้>.jsonl`
+- [ ] หลังส่ง prompt มี entry ใหม่ใน `log\<YYYY_MM>\<DD>\claude_<วันนี้>.jsonl`
 
 ---
 

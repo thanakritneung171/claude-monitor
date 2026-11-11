@@ -162,7 +162,7 @@ flowchart TD
 
 8. **Filter + persist**
    - `_should_log(email)` — ถ้าเปิด `EMAIL_FILTER_ENABLED` จะ drop call ที่ email ไม่ match `EMAIL_FILTER_SUBSTRING`
-   - `_write_local(payload)` — append JSON 1 บรรทัดลง `log/claude_YYYY-MM-DD.jsonl` (sync)
+   - `_write_local(payload)` — append JSON 1 บรรทัดลง `log/<YYYY_MM>/<DD>/claude_YYYY-MM-DD.jsonl` (sync)
    - `threading.Thread(_send_log, payload)` — POST ไป Worker ใน thread แยก fire-and-forget ถ้า Worker ล่มจะไม่กระทบ proxy
 
 9. **Response กลับไปที่ client**
@@ -172,9 +172,9 @@ flowchart TD
 
 | Class | หน้าที่ | Output |
 |---|---|---|
-| `ClaudeConnectionLogger` | log SNI ของทุก TLS handshake (รวม passthrough) | `log/claude_connections.jsonl` |
-| `ClaudeDesktopDiscovery` | log POST บน claude.ai/anthropic ที่ยังไม่มี matcher | `log/claude_desktop_discovery.jsonl` |
-| `ClaudeBridgeDiscovery` | log WebSocket frame ที่ยังไม่รู้จัก | `log/claude_bridge_discovery.jsonl` |
+| `ClaudeConnectionLogger` | log SNI ของทุก TLS handshake (รวม passthrough) | `log/<YYYY_MM>/<DD>/claude_connections.jsonl` |
+| `ClaudeDesktopDiscovery` | log POST บน claude.ai/anthropic ที่ยังไม่มี matcher | `log/<YYYY_MM>/<DD>/claude_desktop_discovery.jsonl` |
+| `ClaudeBridgeDiscovery` | log WebSocket frame ที่ยังไม่รู้จัก | `log/<YYYY_MM>/<DD>/claude_bridge_discovery.jsonl` |
 
 ใช้ค้น endpoint ใหม่เวลาเจอ traffic ที่ proxy ยังไม่ครอบคลุม
 
@@ -598,7 +598,7 @@ Console บน proxy ขึ้น:
 ดู entry ที่ JSONL:
 
 ```powershell
-PS> Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 1
+PS> Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Object -Last 1
 ```
 
 จับได้จาก `log/claude_2026-05-11.jsonl` จริง:
@@ -631,7 +631,7 @@ PS> Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Obj
 
 ### 7.3 Schema fix (real capture)
 
-จาก `log/schema_fixes.jsonl` (capture จริงตอน Claude Code โหลด MCP connector):
+จาก `log/<YYYY_MM>/<DD>/schema_fixes.jsonl` (capture จริงตอน Claude Code โหลด MCP connector):
 
 ```json
 {
@@ -649,7 +649,7 @@ PS> Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" | Select-Obj
 
 ### 7.4 SNI discovery
 
-จาก `log/claude_connections.jsonl` (real):
+จาก `log/<YYYY_MM>/<DD>/claude_connections.jsonl` (real):
 
 ```json
 {"ts": 1777999252846, "sni": "bridge.claudeusercontent.com"}
@@ -682,10 +682,10 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 8080
 # TcpTestSucceeded : True
 
 # 2. นับ entry วันนี้
-(Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl").Count
+(Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl").Count
 
 # 3. ดู client breakdown วันนี้
-Get-Content "log\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" |
+Get-Content "log\$(Get-Date -Format 'yyyy_MM')\$(Get-Date -Format 'dd')\claude_$(Get-Date -Format 'yyyy-MM-dd').jsonl" |
   ForEach-Object { ($_ | ConvertFrom-Json).client } |
   Group-Object | Sort-Object Count -Descending
 ```

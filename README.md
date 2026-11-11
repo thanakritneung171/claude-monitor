@@ -59,7 +59,7 @@
 │       ┌───┴────────────────────────────┐                          │
 │       ▼                                ▼                           │
 │   JSONL ในเครื่อง            Cloudflare Worker                     │
-│   (log/claude_*.jsonl)       (POST /log + Logto-gated dashboard)   │
+│   (log/YYYY_MM/DD/*.jsonl)  (POST /log + Logto-gated dashboard)   │
 │                                    │                               │
 │                                    ▼                               │
 │                            Cloudflare D1                           │
@@ -80,7 +80,7 @@
 
 | Class | หน้าที่ |
 |-------|---------|
-| `ToolSchemaFixer` | แก้ tool `input_schema` ที่มี `oneOf/allOf/anyOf` ระดับ top-level (Anthropic API ปฏิเสธ) ให้ผ่านได้ → log ลง `log/schema_fixes.jsonl` |
+| `ToolSchemaFixer` | แก้ tool `input_schema` ที่มี `oneOf/allOf/anyOf` ระดับ top-level (Anthropic API ปฏิเสธ) ให้ผ่านได้ → log ลง `log/<YYYY_MM>/<DD>/schema_fixes.jsonl` |
 
 **Monitor / identity classes:**
 
@@ -96,10 +96,9 @@
 
 | Class | หน้าที่ |
 |-------|---------|
-| `ClaudeConnectionLogger` | log SNI ของทุก TLS connection → `log/claude_connections.jsonl` |
-| `ClaudeDesktopDiscovery` | log POST ที่ยังไม่มี matcher → `log/claude_desktop_discovery.jsonl` |
-| `ClaudeBridgeDiscovery` | log WS frames ที่ยังไม่รู้จัก → `log/claude_bridge_discovery.jsonl` |
-| `IdentityDebug` | (ชั่วคราว) log การ resolve identity ต่อ request → `log/identity_debug.jsonl` |
+| `ClaudeConnectionLogger` | log SNI ของทุก TLS connection → `log/<YYYY_MM>/<DD>/claude_connections.jsonl` |
+| `ClaudeDesktopDiscovery` | log POST ที่ยังไม่มี matcher → `log/<YYYY_MM>/<DD>/claude_desktop_discovery.jsonl` |
+| `ClaudeBridgeDiscovery` | log WS frames ที่ยังไม่รู้จัก → `log/<YYYY_MM>/<DD>/claude_bridge_discovery.jsonl` |
 
 > `ClaudeSegmentMonitor` ยังอยู่ในไฟล์แต่ **เลิกใช้แล้ว** (host ของ Segment ไม่มี session cookie จึง correlate ไม่ได้) — `anon_id` กลายเป็น vestigial
 
@@ -191,12 +190,14 @@ CREATE TABLE api_logs (
 
 ```
 log/
-├── claude_2026-06-12.jsonl              # log รายวัน 1 บรรทัด = 1 call
-├── claude_connections.jsonl             # SNI ของทุก connection (debug)
-├── claude_desktop_discovery.jsonl       # POST ที่ยังไม่มี matcher
-├── claude_bridge_discovery.jsonl        # WS frames ที่ยังไม่รู้จัก
-├── identity_debug.jsonl                 # debug การ resolve identity ต่อ request
-└── schema_fixes.jsonl                   # tool ที่ ToolSchemaFixer rewrite
+└── 2026_11/                                 # เดือน (YYYY_MM — เรียงถูกเสมอแม้ข้ามปี)
+    └── 11/                                  # วัน (DD) — ลบทั้งโฟลเดอร์วัน/เดือนได้เลย
+        ├── claude_2026-11-11.jsonl          # log รายวัน 1 บรรทัด = 1 call
+        ├── claude_connections.jsonl         # SNI ของทุก connection (debug)
+        ├── claude_desktop_discovery.jsonl   # POST ที่ยังไม่มี matcher (body > 4KB → ตัด + req_shape)
+        ├── claude_bridge_discovery.jsonl    # WS frames ที่ยังไม่รู้จัก
+        ├── code_session_debug.jsonl         # (ชั่วคราว) ConversationService RPC
+        └── schema_fixes.jsonl               # tool ที่ ToolSchemaFixer rewrite
 ```
 
 ## ข้อมูลในแต่ละ entry
