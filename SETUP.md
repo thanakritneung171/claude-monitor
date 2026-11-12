@@ -90,11 +90,15 @@ npm run deploy
 | push เข้า `master` ที่แก้ `worker/` | `worker:check` แล้วต่อด้วย `worker:deploy` (`wrangler deploy`) |
 | กด **Run pipeline** บน `master` เอง | check + deploy (ใช้ deploy ซ้ำโดยไม่ต้องแก้โค้ด) |
 
-ตั้งครั้งเดียว:
+ตั้งไว้แล้ว (2026-11-12) — ถ้าต้องตั้งใหม่:
 
-1. **Cloudflare token** — dashboard → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers** → Account Resources = *Cloudflare Training3* → สร้างแล้ว copy token
-2. **GitLab variable** — โปรเจกต์ → Settings → CI/CD → Variables → Add: key `CLOUDFLARE_API_TOKEN`, ติ๊ก **Masked** + **Protected** (master ต้องเป็น protected branch)
-3. **Runner** — ต้องมี GitLab Runner แบบ **Docker executor** ที่ออกเน็ตไป `api.cloudflare.com` และ `registry.npmjs.org` ได้ (job ใช้ image `node:22`)
+1. **Cloudflare token** — dashboard → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers** → Account + Zone resources = *Cloudflare Training3* → สร้างแล้ว copy token (ตอนนี้ใช้ token ชื่อ `gitlab-ci-claude-monitor-hooks`)
+2. **GitLab variable** — Settings → CI/CD → Variables → `CLOUDFLARE_API_TOKEN` ติ๊ก **Masked** + **Protected**
+3. **Protected branch** — Settings → Repository → Protected branches → `master` (Developers + Maintainers push/merge ได้) ไม่งั้น job บน master มองไม่เห็น variable ที่ Protected
+4. **Runner** — ใช้ runner **#69** (tag `deploy`, shell executor บน gitlab-server 10.16.1.64) เปิดไว้ที่ Settings → CI/CD → Runners — job ทุกตัวมี `tags: [deploy]`
+
+> **default branch ของโปรเจกต์คือ `main`** (มีแค่ Initial commit) — CI จึงระบุ `master` ตรง ๆ ไม่ได้ใช้ `$CI_DEFAULT_BRANCH`
+> **Node บน runner:** gitlab-server ไม่มี Node และต่อ `nodejs.org` ไม่ได้ (ต่อได้แค่ `registry.npmjs.org` / `api.cloudflare.com`) — job จึงประกอบ Node 22.15.0 + npm 10.9.2 จาก npm registry (`node-linux-x64` + `npm`, ล็อก sha512 ใน `.gitlab-ci.yml`) เก็บที่ `~gitlab-runner/.cache/ci-node` ใช้ซ้ำ — จะอัปเกรด Node ต้องแก้ `NODE_VERSION` / `NPM_VERSION` และค่า sha512 คู่กัน
 
 > D1 migration (`worker/migrations/*.sql`) ยังรันมือด้วย `npm run db:*` เหมือนเดิม — CI deploy เฉพาะโค้ด worker
 > ทดสอบในเครื่องก่อน push ได้ด้วย `npm run typecheck && npm test` ในโฟลเดอร์ `worker/`
