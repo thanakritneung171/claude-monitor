@@ -1,0 +1,71 @@
+# CI/CD ของ Cloudflare Worker (worker/) — claude-monitor-hooks
+#
+#   check   ทุก MR และทุก push ที่แก้ worker/  → typecheck + test + bundle (dry-run)
+#   deploy  เฉพาะ push เข้า master ที่แก้ worker/ → wrangler deploy ขึ้น production
+#
+# ต้องตั้งก่อนใช้ (GitLab → Settings → CI/CD → Variables):
+#   CLOUDFLARE_API_TOKEN  token แบบ "Edit Cloudflare Workers" ของ account
+#                         Cloudflare Training3 — ติ๊ก Masked + Protected
+#   (account_id อยู่ใน worker/wrangler.jsonc แล้ว ไม่ต้องตั้งซ้ำ)
+#
+# D1 migration (worker/migrations/*.sql) ยังรันมือผ่าน npm run db:* เหมือนเดิม —
+# pipeline นี้ deploy เฉพาะโค้ด worker
+
+stages:
+  - check
+  - deploy
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never            # มี MR เปิดอยู่ → ใช้ pipeline ของ MR อย่างเดียว ไม่รันซ้ำ
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  WRANGLER_SEND_METRICS: "false"
+
+.worker:
+  image: node:22          # Debian (glibc) — workerd ที่ใช้ตอน test รันบน alpine ไม่ได้
+  before_script:
+    - cd worker
+    - npm ci --no-audit --no-fund
+  cache:
+    key:
+      files:
+        - worker/package-lock.json
+    paths:
+      - .npm/
+
+worker:check:
+  extends: .worker
+  stage: check
+  script:
+    - npm run typecheck
+    - npm test
+    - npm run build:check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - changes:
+        - worker/**/*
+        - .gitlab-ci.yml
+
+worker:deploy:
+  extends: .worker
+  stage: deploy
+  needs: ["worker:check"]
+  resource_group: cloudflare-production   # deploy ทีละรอบ ไม่ชนกัน
+  environment:
+    name: production
+    url: https://claude-monitor-hooks.cloudflare-training3.workers.dev
+  script:
+    - 'test -n "$CLOUDFLARE_API_TOKEN" || { echo "ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน GitLab CI/CD Variables"; exit 1; }'
+    - npx wrangler deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - worker/**/*
+        - .gitlab-ci.yml

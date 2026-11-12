@@ -80,6 +80,25 @@ npm run deploy
 
 ได้ URL เช่น `https://claude-monitor-hooks.<name>.workers.dev`
 
+### 1g. CI/CD (GitLab) — deploy อัตโนมัติเมื่อ push เข้า master
+
+หลังตั้งครั้งแรกแล้ว ไม่ต้อง `npm run deploy` เองอีก — [.gitlab-ci.yml](.gitlab-ci.yml) ทำให้:
+
+| เหตุการณ์ | job ที่รัน |
+|---|---|
+| MR / push ทุก branch ที่แก้ `worker/` | `worker:check` — `npm run typecheck` + `npm test` + `npm run build:check` |
+| push เข้า `master` ที่แก้ `worker/` | `worker:check` แล้วต่อด้วย `worker:deploy` (`wrangler deploy`) |
+| กด **Run pipeline** บน `master` เอง | check + deploy (ใช้ deploy ซ้ำโดยไม่ต้องแก้โค้ด) |
+
+ตั้งครั้งเดียว:
+
+1. **Cloudflare token** — dashboard → My Profile → API Tokens → Create Token → template **Edit Cloudflare Workers** → Account Resources = *Cloudflare Training3* → สร้างแล้ว copy token
+2. **GitLab variable** — โปรเจกต์ → Settings → CI/CD → Variables → Add: key `CLOUDFLARE_API_TOKEN`, ติ๊ก **Masked** + **Protected** (master ต้องเป็น protected branch)
+3. **Runner** — ต้องมี GitLab Runner แบบ **Docker executor** ที่ออกเน็ตไป `api.cloudflare.com` และ `registry.npmjs.org` ได้ (job ใช้ image `node:22`)
+
+> D1 migration (`worker/migrations/*.sql`) ยังรันมือด้วย `npm run db:*` เหมือนเดิม — CI deploy เฉพาะโค้ด worker
+> ทดสอบในเครื่องก่อน push ได้ด้วย `npm run typecheck && npm test` ในโฟลเดอร์ `worker/`
+
 ---
 
 ## ขั้นตอนที่ 2: ตั้งค่า Proxy Addon
