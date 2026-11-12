@@ -7,6 +7,9 @@
 #   CLOUDFLARE_API_TOKEN  token แบบ "Edit Cloudflare Workers" ของ account
 #                         Cloudflare Training3 — ติ๊ก Masked + Protected
 #   (account_id อยู่ใน worker/wrangler.jsonc แล้ว ไม่ต้องตั้งซ้ำ)
+#   master ต้องเป็น protected branch (Settings → Repository) ไม่งั้น job บน master
+#   จะไม่เห็น variable ที่ติ๊ก Protected
+#   runner: ใช้ runner ที่มี tag "deploy" (#69) — Settings → CI/CD → Runners
 #
 # D1 migration (worker/migrations/*.sql) ยังรันมือผ่าน npm run db:* เหมือนเดิม —
 # pipeline นี้ deploy เฉพาะโค้ด worker
@@ -29,6 +32,8 @@ variables:
 
 .worker:
   image: node:22          # Debian (glibc) — workerd ที่ใช้ตอน test รันบน alpine ไม่ได้
+  tags:
+    - deploy
   before_script:
     - cd worker
     - npm ci --no-audit --no-fund
@@ -64,8 +69,9 @@ worker:deploy:
     - 'test -n "$CLOUDFLARE_API_TOKEN" || { echo "ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน GitLab CI/CD Variables"; exit 1; }'
     - npx wrangler deploy
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+    # default branch ของโปรเจกต์คือ main (มีแค่ Initial commit) — ระบุ master ตรง ๆ
+    - if: $CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"
       changes:
         - worker/**/*
         - .gitlab-ci.yml
