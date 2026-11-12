@@ -29,12 +29,33 @@ workflow:
 variables:
   npm_config_cache: "$CI_PROJECT_DIR/.npm"
   WRANGLER_SEND_METRICS: "false"
+  NODE_VERSION: "22.15.0"
 
 .worker:
-  image: node:22          # Debian (glibc) — workerd ที่ใช้ตอน test รันบน alpine ไม่ได้
+  image: node:22          # ใช้เมื่อ runner เป็น Docker executor (Debian/glibc — workerd รันบน alpine ไม่ได้)
   tags:
     - deploy
   before_script:
+    # runner #69 เป็น shell executor บน gitlab-server ที่ไม่มี Node — ถ้าไม่มี npm ให้โหลด
+    # Node จาก nodejs.org (เช็ค SHA256) มาเก็บใน ~/.cache/ci-node แล้วใช้ซ้ำรอบถัดไป
+    - |
+      if ! command -v npm >/dev/null 2>&1; then
+        NODE_PKG="node-v${NODE_VERSION}-linux-x64"
+        NODE_HOME="$HOME/.cache/ci-node/$NODE_PKG"
+        if [ ! -x "$NODE_HOME/bin/node" ]; then
+          echo "Node ${NODE_VERSION} not found on runner - downloading from nodejs.org"
+          DL="$(mktemp -d)"
+          curl -fsSL -o "$DL/$NODE_PKG.tar.gz"  "https://nodejs.org/dist/v${NODE_VERSION}/$NODE_PKG.tar.gz"
+          curl -fsSL -o "$DL/SHASUMS256.txt"    "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+          (cd "$DL" && grep " $NODE_PKG.tar.gz\$" SHASUMS256.txt | sha256sum -c -)
+          mkdir -p "$HOME/.cache/ci-node"
+          tar -xzf "$DL/$NODE_PKG.tar.gz" -C "$DL"
+          rm -rf "$NODE_HOME" && mv "$DL/$NODE_PKG" "$NODE_HOME"
+          rm -rf "$DL"
+        fi
+        export PATH="$NODE_HOME/bin:$PATH"
+      fi
+    - node --version && npm --version
     - cd worker
     - npm ci --no-audit --no-fund
   cache:
