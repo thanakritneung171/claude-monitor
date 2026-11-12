@@ -29,28 +29,40 @@ workflow:
 variables:
   npm_config_cache: "$CI_PROJECT_DIR/.npm"
   WRANGLER_SEND_METRICS: "false"
+  # Node + npm มาจาก registry.npmjs.org เพราะ gitlab-server ต่อ nodejs.org ไม่ได้ (connection reset)
+  # ตรวจแล้ว 2026-11-12: bin/node ใน node-linux-x64 ตรงกับ tarball ทางการของ nodejs.org ทุก byte
+  # (sha256 c43f3f73…8716) และ npm 10.9.2 ตรงกับตัวที่มากับ Node 22.15.0 (ต่างแค่ whitespace)
   NODE_VERSION: "22.15.0"
+  NPM_VERSION: "10.9.2"
+  NODE_PKG_SHA512: "cceaf50599f1c1c254b08c4840afcc75128c500520eace5899586afa73057a2a5b13d9849c8343dfdcb75c2d191e0dc8818e20017615024e666c9312c4aa1bdc"
+  NPM_PKG_SHA512: "8ab88f10f224a0c614cb717a7f7c30499014f77134120e9c1f0211ea3cf3397592cbe483feb38e0c4b3be1c54e347292c76a1b5edb94a3289d5448484ab8ac81"
 
 .worker:
   image: node:22          # ใช้เมื่อ runner เป็น Docker executor (Debian/glibc — workerd รันบน alpine ไม่ได้)
   tags:
     - deploy
   before_script:
-    # runner #69 เป็น shell executor บน gitlab-server ที่ไม่มี Node — ถ้าไม่มี npm ให้โหลด
-    # Node จาก nodejs.org (เช็ค SHA256) มาเก็บใน ~/.cache/ci-node แล้วใช้ซ้ำรอบถัดไป
+    # runner #69 เป็น shell executor บน gitlab-server ที่ไม่มี Node — ถ้าไม่มี npm ให้ประกอบ
+    # Node + npm จาก registry.npmjs.org (เช็ค sha512 ที่ล็อกไว้) เก็บใน ~/.cache/ci-node ใช้ซ้ำรอบถัดไป
     - |
       if ! command -v npm >/dev/null 2>&1; then
-        NODE_PKG="node-v${NODE_VERSION}-linux-x64"
-        NODE_HOME="$HOME/.cache/ci-node/$NODE_PKG"
-        if [ ! -x "$NODE_HOME/bin/node" ]; then
-          echo "Node ${NODE_VERSION} not found on runner - downloading from nodejs.org"
+        NODE_HOME="$HOME/.cache/ci-node/node-v${NODE_VERSION}-npm-${NPM_VERSION}"
+        if [ ! -x "$NODE_HOME/bin/node" ] || [ ! -e "$NODE_HOME/bin/npm" ]; then
+          echo "Node ${NODE_VERSION} not on runner - fetching from registry.npmjs.org"
+          REG="https://registry.npmjs.org"
           DL="$(mktemp -d)"
-          curl -fsSL -o "$DL/$NODE_PKG.tar.gz"  "https://nodejs.org/dist/v${NODE_VERSION}/$NODE_PKG.tar.gz"
-          curl -fsSL -o "$DL/SHASUMS256.txt"    "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
-          (cd "$DL" && grep " $NODE_PKG.tar.gz\$" SHASUMS256.txt | sha256sum -c -)
+          curl -fsSL -o "$DL/node.tgz" "$REG/node-linux-x64/-/node-linux-x64-${NODE_VERSION}.tgz"
+          echo "${NODE_PKG_SHA512}  $DL/node.tgz" | sha512sum -c -
+          curl -fsSL -o "$DL/npm.tgz" "$REG/npm/-/npm-${NPM_VERSION}.tgz"
+          echo "${NPM_PKG_SHA512}  $DL/npm.tgz" | sha512sum -c -
+          mkdir -p "$DL/node/lib/node_modules/npm"
+          tar -xzf "$DL/node.tgz" -C "$DL/node" --strip-components=1
+          tar -xzf "$DL/npm.tgz" -C "$DL/node/lib/node_modules/npm" --strip-components=1
+          chmod +x "$DL/node/bin/node" "$DL/node/lib/node_modules/npm/bin/npm-cli.js" "$DL/node/lib/node_modules/npm/bin/npx-cli.js"
+          ln -sf ../lib/node_modules/npm/bin/npm-cli.js "$DL/node/bin/npm"
+          ln -sf ../lib/node_modules/npm/bin/npx-cli.js "$DL/node/bin/npx"
           mkdir -p "$HOME/.cache/ci-node"
-          tar -xzf "$DL/$NODE_PKG.tar.gz" -C "$DL"
-          rm -rf "$NODE_HOME" && mv "$DL/$NODE_PKG" "$NODE_HOME"
+          rm -rf "$NODE_HOME" && mv "$DL/node" "$NODE_HOME"
           rm -rf "$DL"
         fi
         export PATH="$NODE_HOME/bin:$PATH"
