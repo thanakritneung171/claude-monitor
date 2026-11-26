@@ -5,6 +5,7 @@ import { json } from './lib/format';
 import { requireUser } from './lib/auth';
 import { handleLog } from './routes/log';
 import { handleHealth } from './routes/health';
+import { handlePac } from './routes/pac';
 import { handleDashboard } from './routes/dashboard';
 import { handleExport } from './routes/export';
 import { handleAccounts } from './routes/accounts';
@@ -39,6 +40,7 @@ export default {
 		// ─── Public endpoints ──────────────────────────────────────────────────
 		if (pathname === '/log'      && method === 'POST') return handleLog(request, env);
 		if (pathname === '/health')                        return handleHealth();
+		if (pathname === '/proxy.pac' && (method === 'GET' || method === 'HEAD')) return handlePac();
 		if (pathname === '/login'    && method === 'GET')  return handleLoginGet(url, env, request);
 		// Logto redirect_uri is registered as the root URL — when ?code= is present, handle as OAuth callback
 		if (pathname === '/'         && method === 'GET' && url.searchParams.has('code')) {

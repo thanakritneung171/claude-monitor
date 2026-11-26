@@ -30,6 +30,26 @@ describe("public routes", () => {
 		expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
 	});
 
+	it("GET /proxy.pac serves the Claude-only PAC without auth", async () => {
+		const res = await SELF.fetch(`${BASE}/proxy.pac`);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("Content-Type")).toContain("application/x-ns-proxy-autoconfig");
+		const pac = await res.text();
+		expect(pac).toContain("function FindProxyForURL(url, host)");
+		expect(pac).toContain('return "PROXY 10.10.84.1:8081"');
+		expect(pac).toContain('return "DIRECT"');
+		for (const d of ["anthropic.com", "claude.ai", "claudeusercontent.com"]) {
+			expect(pac).toContain(`host == "${d}" || dnsDomainIs(host, ".${d}")`);
+		}
+		expect(/^[\x00-\x7f]*$/.test(pac)).toBe(true);
+	});
+
+	it("HEAD /proxy.pac answers 200 without auth", async () => {
+		const res = await SELF.fetch(`${BASE}/proxy.pac`, { method: "HEAD" });
+		expect(res.status).toBe(200);
+		expect(res.headers.get("Content-Type")).toContain("application/x-ns-proxy-autoconfig");
+	});
+
 	it("GET /login redirects to Logto with PKCE", async () => {
 		const res = await SELF.fetch(`${BASE}/login`, { redirect: "manual" });
 		expect(res.status).toBe(302);
