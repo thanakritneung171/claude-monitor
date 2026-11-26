@@ -562,6 +562,8 @@ Get-NetTCPConnection -State Established |
 
 ### Cowork ไม่ขึ้น log แต่ Chat tab ขึ้น
 
+> ⚠️ **อัปเดต 2026-11-26:** เครื่องพนักงาน (proxy กลาง 10.10.84.1) ใช้แพ็กเกจ `install-SDBAIInsight` ซึ่งตั้ง **PAC** แทน system proxy แบบจับทุก host และไม่ตั้ง user env แล้ว — ถ้า Cowork ไม่ขึ้น log ให้เช็ค `AutoConfigURL` = `.../proxy.pac` + Quit/เปิด Claude Desktop ใหม่ (ดู [SETUP.md ขั้นตอนที่ 5](../SETUP.md)) วิธีข้างล่างใช้กับ proxy บนเครื่องตัวเอง (127.0.0.1) เท่านั้น
+
 Cowork worker subprocess ถูก spawn จาก Claude Desktop process — มัน inherit env ของ parent ดังนั้น **ต้องตั้ง env เป็น User-level (permanent)** ไม่ใช่แค่ session:
 
 ```powershell

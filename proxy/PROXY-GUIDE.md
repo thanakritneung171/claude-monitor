@@ -332,6 +332,10 @@ Script เดียวตั้งให้ครบ:
 
 ### 5.2 ทำไมต้อง User-level env (ไม่ใช่แค่ session)?
 
+> ⚠️ **อัปเดต 2026-11-26 — ใช้กับ proxy บนเครื่องตัวเอง (127.0.0.1) เท่านั้น** เครื่องพนักงานที่ใช้ proxy กลาง 10.10.84.1 ห้ามตั้ง user env `HTTPS_PROXY` — ทุกเครื่องมือ (git/pip/npm/curl) จะวิ่งผ่าน VPN และค้าง ~21 วิต่อ connection เมื่อไม่ต่อ VPN
+> แพ็กเกจ `install-SDBAIInsight` ใช้ **PAC** (Claude-only) + `~/.claude/settings.json` แทน ดู [SETUP.md ขั้นตอนที่ 5](../SETUP.md)
+> Claude Desktop รุ่นปัจจุบันรัน Cowork ใน VM ที่ service (LocalSystem) เปิด — user env ของ Windows ไปไม่ถึงอยู่แล้ว ตัวแอปใช้ proxy ของระบบ (รองรับ PAC) — หลังเปลี่ยนเป็น PAC ให้ทดสอบส่ง prompt ใน Cowork 1 ครั้งว่าขึ้น log
+
 Cowork ใน Claude Desktop spawn **worker subprocess** ที่ inherit env ของ Claude Desktop process — ซึ่ง Desktop ถูก launch จาก Start menu (ใช้ User-level env เท่านั้น)
 
 - ถ้าตั้งแค่ session (`$env:HTTPS_PROXY = ...`) → มีผลแค่ shell ปัจจุบัน — Cowork bypass ทันที (ส่งตรงไป `160.79.104.x` ไม่เห็นใน proxy)

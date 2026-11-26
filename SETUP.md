@@ -169,7 +169,38 @@ sudo update-ca-certificates
 
 ## ขั้นตอนที่ 5: ตั้งค่า System Proxy + Persistent Env Vars
 
-### Windows — ใช้ `install-claude-proxy.ps1` (แนะนำ)
+### เครื่องพนักงาน (proxy กลาง 10.10.84.1:8081) — ใช้แพ็กเกจ `install-SDBAIInsight` (อัปเดต 2026-11-26)
+
+รัน `install-mitmproxy-cert.bat` (ครั้งเดียว) แล้ว `install-claude-proxy.bat` จากแพ็กเกจ แล้ว Quit Claude Desktop จาก system tray / ปิด VS Code + terminal ทั้งหมดแล้วเปิดใหม่
+
+| ช่องทาง | ตั้งแบบไหน | ผล |
+|---|---|---|
+| Windows system proxy | **PAC** `https://claude-monitor-hooks.cloudflare-training3.workers.dev/proxy.pac` (route `/proxy.pac` ใน worker, public) | เฉพาะ `*.anthropic.com` / `*.claude.ai` / `*.claudeusercontent.com` เข้า proxy (ถูก log) — ที่เหลือ DIRECT |
+| Claude Code (CLI / VS Code / Desktop Code tab) | `~/.claude/settings.json` → `env.HTTPS_PROXY` | Claude Code ไม่อ่าน PAC จึงใช้ env แต่จำกัดแค่ Claude Code |
+| CA | `install-mitmproxy-cert.bat` ใส่ CA ของ server ลง Windows store (Claude Code ใช้ store นี้) + installer เขียน `~/.claude/sdb-ai-insight-ca.pem` ให้ `NODE_EXTRA_CA_CERTS` | |
+
+**ทำไมเปลี่ยน** — installer รุ่นก่อน (11 พ.ย.) ตั้ง system proxy แบบจับทุก host + user env `HTTPS_PROXY`:
+- ไม่ต่อ VPN → ทุกเว็บ/แอปต่อเน็ตไม่ได้ (Chromium รอ proxy ~8 วิ แล้ว `ERR_TIMED_OUT`; git/pip/npm/curl ค้าง ~21 วิต่อ connection) เพราะ 10.10.84.1 อยู่หลัง VPN
+- ต่อ VPN → ทุกเว็บอ้อมผ่าน VPN + proxy (VPN เป็น split-tunnel): +200–450 ms ต่อ connection, ดาวน์โหลดช้าลง 6–9 เท่า
+- `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` ชี้ CA ที่ installer **สร้างเองบนเครื่อง** (ไม่ใช่ CA ของ server) → curl ของ Git Bash / Python requests / pip TLS error
+
+**ผลตอนนี้:** Claude ต้องต่อ VPN (fail-closed — ไม่ต่อ VPN แล้วแอป Claude ต่อไม่ได้ ไม่มี prompt หลุดโดยไม่ถูก log) ส่วนเว็บ/แอปอื่นใช้ได้ปกติทั้งต่อและไม่ต่อ VPN
+ถ้าต้องการให้ Claude ใช้ได้ตอนไม่ต่อ VPN (ไม่ถูก log) แก้ `PAC_FAIL_OPEN = true` ใน `worker/src/routes/pac.ts` แล้ว deploy — ไม่ต้องติดตั้งใหม่ที่เครื่อง
+
+> ห้ามย้าย PAC ไปไว้บน 10.10.84.1 — ตอนไม่ต่อ VPN Chromium จะค้างทุก request ~21–30 วิรอโหลด PAC ทุกครั้งที่เปิดแอป/เปลี่ยนเครือข่าย · `file://` PAC ใช้ไม่ได้ (Chromium/WinHTTP ปฏิเสธ)
+> เครื่องที่ลง installer ตัวเก่าไว้: รัน `install-claude-proxy.bat` ตัวใหม่ทับได้เลย — ปิด proxy แบบจับทุก host, ลบ user env ที่เป็นค่าของเรา, ลบ autostart `ClaudeMonitorPacServer` (branch `fix-dingtalk-vpn-pac`) ให้เอง
+
+**พฤติกรรมของ installer ที่ควรรู้**
+- **โหลด PAC ก่อนเปลี่ยนอะไร:** ถ้า `/proxy.pac` โหลดไม่ได้ (ยังไม่ deploy / ไม่มีเน็ต) จะหยุดและไม่แตะเครื่องเลย ต้อง deploy worker ก่อนแจก installer
+- **ถ้าเครื่องใช้ proxy / setup script ของตัวเองอยู่ (บริษัทอื่น, Clash ฯลฯ):** ไม่เปลี่ยน system proxy และขึ้นข้อความสีแดง เพราะ PAC ของเราจะทำให้เว็บอื่นข้าม proxy นั้น
+- **ปิด "Automatically detect settings" (WPAD) ระหว่างติดตั้ง:** ถ้าเปิดไว้ WPAD ของเครือข่ายจะชนะ PAC ของเรา uninstall จะเปิดคืนให้
+- **`settings.json`:** `NO_PROXY` รวมของเดิมกับของเรา (เพิ่ม github / npm / pypi ให้คำสั่งที่ Claude Code รันไม่ต้องอ้อม VPN); `HTTPS_PROXY` ของ user สำรองไว้แล้วแทนที่; `NODE_EXTRA_CA_CERTS` ของ user ไม่แตะ
+- ค่าที่สำรองไว้อยู่ที่ `HKCU\Software\SDBAIInsight` — `uninstall-claude-proxy.bat` คืนค่าให้
+- **ข้อจำกัด:** ถ้าโหลด PAC ไม่ได้ภายหลัง (Cloudflare ล่ม / มีคนบล็อก workers.dev) Chromium จะต่อตรง = Claude ใช้ได้แต่ไม่ถูก log · สคริปต์ที่ใช้ Anthropic SDK (Python/Node) ไม่อ่าน PAC จึงไม่ถูก log เว้นแต่ตั้ง `HTTPS_PROXY` เองในโปรเจกต์นั้น
+
+### เครื่อง dev ที่รัน mitmproxy เอง (127.0.0.1) — `install-claude-proxy.ps1`
+
+> สคริปต์ชุดนี้ตั้ง user env แบบถาวร (จับทุกเครื่องมือ) — ใช้ได้เฉพาะตอน proxy อยู่บนเครื่องตัวเอง ห้ามใช้กับ proxy กลาง 10.10.84.1
 
 ```powershell
 cd proxy
@@ -262,7 +293,10 @@ https://claude-monitor-hooks.<name>.workers.dev/
 ## แก้ปัญหาที่พบบ่อย
 
 ### Cowork ไม่ขึ้น log
-Cowork worker subprocess bypass system proxy → รัน `install-claude-proxy.ps1` แล้ว Quit Claude Desktop จาก system tray แล้วเปิดใหม่
+Claude Desktop ยังไม่ได้อ่าน PAC → เช็ค `(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings').AutoConfigURL` ต้องเป็น `.../proxy.pac` แล้ว Quit Claude Desktop จาก system tray แล้วเปิดใหม่ (ต้องต่อ VPN)
+
+### ไม่ต่อ VPN แล้วเว็บอื่นใช้ไม่ได้ / ต่อ VPN แล้วเน็ตช้า
+เครื่องยังเป็น installer ตัวเก่า (system proxy จับทุก host) → รัน `install-claude-proxy.bat` ตัวใหม่ แล้วเช็คว่า `ProxyEnable` = 0 และ user env `HTTPS_PROXY` ว่าง
 
 ### Claude Code CLI/VSCode ไม่ขึ้น log
 session เก่ายังใช้ env เดิม → เปิด terminal ใหม่ / `code .` จาก terminal ใหม่ · ตรวจ `$env:HTTPS_PROXY` ไม่ว่าง

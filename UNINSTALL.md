@@ -12,6 +12,22 @@
 
 ## ขั้นตอนที่ 2: ถอด Proxy Config (Windows)
 
+### เครื่องพนักงาน (ติดตั้งจากแพ็กเกจ `install-SDBAIInsight`)
+
+ดับเบิลคลิก `uninstall-claude-proxy.bat` (อยู่ในแพ็กเกจ และที่ `proxy/uninstall-claude-proxy.bat`) — ลบเฉพาะค่าที่ยังเป็นของเรา ค่าที่ user / IT ตั้งเองไม่แตะ:
+
+| สิ่งที่ถูกลบ / คืนค่า | เงื่อนไข |
+|---|---|
+| Windows PAC (`AutoConfigURL` = `.../proxy.pac`) | ลบ — ถ้าก่อนติดตั้งมีที่อยู่ setup script อื่นเก็บไว้ (ปิดอยู่) คืนที่อยู่เดิมให้ และเปิด "Automatically detect settings" คืนถ้า installer เป็นคนปิด (ค่าสำรองอยู่ที่ `HKCU\Software\SDBAIInsight`) |
+| system proxy แบบจับทุก host `10.10.84.1:8081` (installer รุ่นเก่า) | ปิด + ล้าง `ProxyServer` (และ `ProxyOverride` ถ้ายังเป็นรายการเดิมของเรา) |
+| `~/.claude/settings.json` — `env` | `HTTPS_PROXY`/`HTTP_PROXY` ที่ชี้ 10.10.84.1: คืนค่าเดิมของ user ถ้ามี ไม่งั้นลบ · `NO_PROXY`: คืนค่าเดิม หรือลบเฉพาะรายการของเรา · `NODE_EXTRA_CA_CERTS` ที่ชี้ CA ของเรา: ลบ |
+| user env vars (installer รุ่นเก่า) | ลบ `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `SSL_CERT_FILE` เมื่อค่ายังเป็นของเรา |
+| ไฟล์ `~/.claude/sdb-ai-insight-ca.pem`, autostart `ClaudeMonitorPacServer` + `~/.claude/claude-proxy.pac` (branch เก่า) | ลบ |
+
+CA ใน Windows store (`install-mitmproxy-cert.bat`) ไม่ถูกลบ — ลบเองได้ที่ `certmgr.msc` → Trusted Root → `mitmproxy`
+
+### เครื่อง dev (สคริปต์ .ps1)
+
 ```powershell
 cd proxy
 .\uninstall-claude-proxy.ps1
